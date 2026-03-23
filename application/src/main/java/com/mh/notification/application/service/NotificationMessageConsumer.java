@@ -7,6 +7,7 @@ import com.mh.notification.application.sender.NotificationSender;
 import com.mh.notification.domain.NotificationSendResult;
 import com.mh.notification.domain.SendStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +16,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationMessageConsumer {
 
     private static final int MAX_RETRY_COUNT = 3;
@@ -25,6 +27,11 @@ public class NotificationMessageConsumer {
 
     @Transactional
     public void consume(NotificationMessage message) {
+
+        if (isAlreadySent(message)) {
+            log.info("[IDEMPOTENT] already sent. notificationID={}, channer={}", message.notificationId(), message.channel());
+            return;
+        }
         NotificationSender sender = findSender(message);
 
         NotificationSendResult result = sendSafely(sender, message);
@@ -42,6 +49,10 @@ public class NotificationMessageConsumer {
 
         notificationQueuePublisher.publishToDead(message);
         notificationSendResultRepository.save(result);
+    }
+
+    private boolean isAlreadySent(NotificationMessage message) {
+        return notificationSendResultRepository.existsSuccessByNotificationIdAndChannel(message.notificationId(), message.channel());
     }
 
     private NotificationSender findSender(NotificationMessage message) {
