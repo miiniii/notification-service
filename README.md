@@ -8,8 +8,30 @@
 - Java, Spring Boot, H2, Redis(Redis Stream - 메세지 큐 용도), gradle
 
 ### API 명세서
+| 기능 | Method | URL |
+|------|--------|-----|
+| 알림 등록 | POST | `/api/notifications` |
 
 ### 실행방법
+```bash
+# Redis 실행
+redis-server
+
+# 서버 실행
+./gradlew bootRun
+
+# 알림 생성 API 호출
+curl -X POST http://localhost:8080/api/notifications \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 999,
+    "service": "PAYMENT",
+    "channel": "EMAIL",
+    "title": "정상 발송 테스트",
+    "body": "이메일 알림 테스트입니다.",
+    "targetUrl": "/payments/concurrency-test"
+  }'
+```
 
 ### 디렉토리 구조
 ```
