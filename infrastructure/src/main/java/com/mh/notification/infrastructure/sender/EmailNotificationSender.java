@@ -17,6 +17,7 @@ public class EmailNotificationSender implements NotificationSender {
 
     @Override
     public void send(NotificationMessage message) {
+        // 실패 테스트용
         if (message.title() != null && message.title().contains("FAIL")) {
             throw new IllegalStateException("Email provider error");
         }
