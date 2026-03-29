@@ -32,6 +32,9 @@ public class NotificationSendResult {
     @Column(name = "failure_reason")
     private String failureReason;
 
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount;
+
     @Column(name = "processed_at", nullable = false)
     private LocalDateTime processedAt;
 
@@ -42,34 +45,38 @@ public class NotificationSendResult {
     private NotificationSendResult(Long notificationId,
                                    NotificationChannel channel,
                                    SendStatus status,
+                                   int retryCount,
                                    String failureReason,
                                    LocalDateTime processedAt) {
         this.notificationId = notificationId;
         this.channel = channel;
         this.status = status;
+        this.retryCount = retryCount;
         this.failureReason = failureReason;
         this.processedAt = processedAt;
     }
 
-    public static NotificationSendResult success(Long notificationId, NotificationChannel channel) {
+    public static NotificationSendResult success(Long notificationId, NotificationChannel channel, int retryCount) {
         LocalDateTime now = LocalDateTime.now();
 
         return NotificationSendResult.builder()
                 .notificationId(notificationId)
                 .channel(channel)
                 .status(SendStatus.SUCCESS)
+                .retryCount(retryCount)
                 .failureReason(null)
                 .processedAt(now)
                 .build();
     }
 
-    public static NotificationSendResult failed(Long notificationId, NotificationChannel channel, String failureReason) {
+    public static NotificationSendResult failed(Long notificationId, NotificationChannel channel, int retryCount, String failureReason) {
         LocalDateTime now = LocalDateTime.now();
 
         return NotificationSendResult.builder()
                 .notificationId(notificationId)
                 .channel(channel)
                 .status(SendStatus.FAILED)
+                .retryCount(retryCount)
                 .failureReason(failureReason)
                 .processedAt(now)
                 .build();

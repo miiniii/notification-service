@@ -47,19 +47,17 @@ public class NotificationMessageConsumer {
         log.info("[LOCK OK] notificationId={}, channel={}, lockKey={}",
                 message.notificationId(), message.channel(), lockKey);
 
-        log.info("[LOCK OK] notificationId={}, channel={}, lockKey={}",
-                message.notificationId(), message.channel(), lockKey);
-
         try {
             if (isAlreadySent(message)) {
                 log.info("[IDEMPOTENT] already sent. notificationID={}, channel={}", message.notificationId(), message.channel());
                 return;
             }
             NotificationSender sender = findSender(message);
-            NotificationSendResult result = sendSafely(sender, message);
+            NotificationSendResult result = sendSafely(sender, message, message.retryCount());
+
+            notificationSendResultRepository.save(result);
 
             if (result.getStatus() == SendStatus.SUCCESS) {
-                notificationSendResultRepository.save(result);
                 return;
             }
 
@@ -72,7 +70,6 @@ public class NotificationMessageConsumer {
             }
 
             notificationQueuePublisher.publishToDead(message);
-            notificationSendResultRepository.save(result);
 
             log.info("[DEAD] moved to DEAD. notificationId={}, channel={}", message.notificationId(), message.channel());
 
@@ -93,14 +90,14 @@ public class NotificationMessageConsumer {
                 .orElseThrow(() -> new IllegalStateException("No sender found for channel: " + message.channel()));
     }
 
-    private NotificationSendResult sendSafely(NotificationSender sender, NotificationMessage message) {
+    private NotificationSendResult sendSafely(NotificationSender sender, NotificationMessage message, int retryCount) {
         try {
             //Thread.sleep(5000); //락 테스트용
             sender.send(message);
-            return NotificationSendResult.success(message.notificationId(), message.channel());
+            return NotificationSendResult.success(message.notificationId(), message.channel(), retryCount);
         } catch (Exception e) {
             String failureReason = extractFailureReason(e);
-            return NotificationSendResult.failed(message.notificationId(), message.channel(), failureReason);
+            return NotificationSendResult.failed(message.notificationId(), message.channel(), retryCount, failureReason);
         }
     }
 
