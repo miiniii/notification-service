@@ -108,7 +108,7 @@ WORK 재처리
 
 #### 1-3. 개선 사항
 
-#### retryCount추가
+#### 1-3-1. retryCount추가
 
 - NotificationMessage DTO에만 retryCount 존재 
 - 스트림 메시지가 유실되면 재시도 횟수 정보도 함께 유실(운영 추적 어려움)
@@ -133,20 +133,48 @@ WORK 재처리
 ```markdown
 개선 후 구조
 [메시지 소비]
-↓
+   ↓
 [락 획득 성공]
-↓
+   ↓
 [중복 발송 여부 확인]
-↓
+   ↓
 [sendSafely() 실행]
-↓
+   ↓
 [result 생성]
-↓
+   ↓
 [DB 저장]  ← 모든 실제 발송 시도 기록
-↓
+   ↓
 ┌───────────────────────────────────────────────┐
 │ SUCCESS                   → 종료               │
 │ FAIL + retry 가능        → WAIT 발행            │
 │ FAIL + retry 불가        → DEAD 발행            │
 └───────────────────────────────────────────────┘
 ```
+
+#### 1-3-2. 메시지 유실 문제
+```java
+public void consumeOnce() {
+  List<StreamMessage> messages = notificationMessageStreamReader.readMessages();
+
+  for (StreamMessage streamMessage : messages) {
+    NotificationMessage message = notificationMessageDeserializer.deserialize(streamMessage.payload());
+    notificationMessageConsumer.consume(message);
+    notificationMessageStreamDeleter.delete(streamMessage.recordId()); // 메시지 유실 문제 발생
+  }
+}
+```
+문제
+- consume() 내부에서 락 획득에 실패하면 메시지 처리 스킵 but 스트림에서는 결과와 무관하게 삭제
+  - 처리되지 않은 메시지 유실 문제 발생
+
+
+구조 개선
+
+| 항목 | 변경 내용 |
+|---|---|
+| 소비 구조 | 단순 조회/삭제 방식에서 Consumer Group 기반 소비 구조로 변경 |
+| 완료 처리 방식 | 무조건 delete 방식에서 결과 기반 Manual Ack 방식으로 변경 |
+| 미처리 메시지 관리 | 락 실패 메시지를 삭제하지 않고 PEL에 남기도록 변경 |
+| 복구 방식 | PEL에 남은 메시지를 `XPENDING + XCLAIM`으로 reclaim 후 재처리 |
+| 멀티 인스턴스 대응 | UUID 기반 consumer name으로 consumer 충돌 가능성 완화 |
+

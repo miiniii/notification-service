@@ -1,5 +1,6 @@
 package com.mh.notification.application.service;
 
+import com.mh.notification.application.dto.ConsumeResult;
 import com.mh.notification.application.dto.NotificationMessage;
 import com.mh.notification.application.outbox.NotificationQueuePublisher;
 import com.mh.notification.application.port.NotificationDistributedLockManager;
@@ -31,7 +32,7 @@ public class NotificationMessageConsumer {
     private final List<NotificationSender> notificationSenders;
 
     @Transactional
-    public void consume(NotificationMessage message) {
+    public ConsumeResult consume(NotificationMessage message) {
         String lockKey = buildLockKey(message);
 
         log.info("[LOCK TRY] notificationId={}, channel={}, lockKey={}",
@@ -41,7 +42,7 @@ public class NotificationMessageConsumer {
 
         if (!locked) {
             log.info("[LOCK FAIL] already processing. notificationId = {}, channel={}", message.notificationId(), message.channel());
-            return;
+            return ConsumeResult.LOCK_FAILED;
         }
 
         log.info("[LOCK OK] notificationId={}, channel={}, lockKey={}",
@@ -50,7 +51,7 @@ public class NotificationMessageConsumer {
         try {
             if (isAlreadySent(message)) {
                 log.info("[IDEMPOTENT] already sent. notificationID={}, channel={}", message.notificationId(), message.channel());
-                return;
+                return ConsumeResult.ALREADY_PROCESSED;
             }
             NotificationSender sender = findSender(message);
             NotificationSendResult result = sendSafely(sender, message, message.retryCount());
@@ -58,7 +59,7 @@ public class NotificationMessageConsumer {
             notificationSendResultRepository.save(result);
 
             if (result.getStatus() == SendStatus.SUCCESS) {
-                return;
+                return ConsumeResult.SUCCESS;
             }
 
             if (message.retryCount() < MAX_RETRY_COUNT) {
@@ -66,12 +67,14 @@ public class NotificationMessageConsumer {
                 notificationQueuePublisher.publishToWait(retryMessage);
 
                 log.info("[RETRY] moved to WAIT. notificationId={}, channel={}, retryCount={}", message.notificationId(), message.channel(), retryMessage.retryCount());
-                return;
+                return ConsumeResult.RETRYABLE_FAIL;
             }
 
             notificationQueuePublisher.publishToDead(message);
 
             log.info("[DEAD] moved to DEAD. notificationId={}, channel={}", message.notificationId(), message.channel());
+
+            return ConsumeResult.DEAD_LETTERED;
 
         } finally {
             notificationDistributedLockManager.unlock(lockKey);

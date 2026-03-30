@@ -21,7 +21,7 @@ public class EmailNotificationSender implements NotificationSender {
         if (message.title() != null && message.title().contains("FAIL")) {
             throw new IllegalStateException("Email provider error");
         }
-        log.info("EMAIL SEND] notificationId = {}, title={}, body={}",
+        log.info("[EMAIL SEND] notificationId = {}, title={}, body={}",
                 message.notificationId(),
                 message.title(),
                 message.body());
