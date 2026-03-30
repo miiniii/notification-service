@@ -116,6 +116,7 @@ WORK 재처리
 
 ```markdown
 기존 구조
+
 [메시지 소비]
    ↓
 [락 획득 성공]
@@ -132,6 +133,7 @@ WORK 재처리
 ```
 ```markdown
 개선 후 구조
+
 [메시지 소비]
    ↓
 [락 획득 성공]
@@ -178,3 +180,21 @@ public void consumeOnce() {
 | 복구 방식 | PEL에 남은 메시지를 `XPENDING + XCLAIM`으로 reclaim 후 재처리 |
 | 멀티 인스턴스 대응 | UUID 기반 consumer name으로 consumer 충돌 가능성 완화 |
 
+#### 1-3-3. 트랜잭션 문제
+```java
+@transactional
+public void publishPendingOutboxes() {
+  List pendingOutboxes = notificationOutboxRepository.findAllByStatus(OutboxStatus.PENDING);
+  for (NotificationOutbox outbox : pendingOutboxes) {
+    notificationMessagePublisher.publish(outbox); // 문제 발생
+    outbox.markPublished();
+  }
+}
+```
+- DB 트랜잭션과 외부 시스템(Redis 호출)을 한 덩어리로 다루고 있음
+  - Redis 호출은 DB 트랜잭션에 포함되지 않는 외부 시스템 호출이므로 롤백 불가능
+
+해결 방향
+- 배치 전체 트랜잭션 제거
+- Outbox를 건별로 독립 처리하도록 구조 변경
+  - 스프링 트랜잭션은 프록시 기반이라, 동일 클래스 내부 메서드 호출(self-invocation)에는 적용되지 않을 수 있어 별도 클래스로 분리

@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -22,5 +23,10 @@ public class NotificationOutboxRepositoryImpl implements NotificationOutboxRepos
     @Override
     public List<NotificationOutbox> findAllByStatus(OutboxStatus status) {
         return notificationOutboxJpaRepository.findAllByStatus(status);
+    }
+
+    @Override
+    public Optional<NotificationOutbox> findById(Long id) {
+        return notificationOutboxJpaRepository.findById(id);
     }
 }
