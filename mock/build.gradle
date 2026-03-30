@@ -1,0 +1,32 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+    id 'java'
+}
+
+group = "com.mh"
+version = "0.0.1-SNAPSHOT"
+description = "mocksend"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.withType(Test) {
+    useJUnitPlatform()
+}
