@@ -26,3 +26,5 @@ spring:
 mock-api:
   base-url: http://localhost:8081
   send-path: /mock/send
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
