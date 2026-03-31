@@ -4,6 +4,7 @@ import com.mh.notification.application.exception.NotificationSendException;
 import com.mh.notification.domain.FailureType;
 import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -18,9 +19,26 @@ import java.net.SocketTimeoutException;
 @RequiredArgsConstructor
 public class MockApiClient {
 
+    private static final String CIRCUIT_BREAKER_ID = "mockApi";
+
     private final MockApiProperties mockApiProperties;
+    private final CircuitBreakerFactory<?, ?> circuitBreakerFactory;
 
     public void send(MockSendRequest request) {
+
+        circuitBreakerFactory.create(CIRCUIT_BREAKER_ID).run(
+                () -> {
+                    doSend(request);
+                    return null;
+                },
+                throwable -> {
+                    throw mapToNotificationSendException(throwable);
+                }
+        );
+
+    }
+
+    private void doSend(MockSendRequest request) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(mockApiProperties.getConnectTimeoutMs());
         requestFactory.setReadTimeout(mockApiProperties.getReadTimeoutMs());
@@ -30,31 +48,48 @@ public class MockApiClient {
                 .requestFactory(requestFactory)
                 .build();
 
-        try {
-            restClient.post()
-                    .uri(mockApiProperties.getSendPath())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .retrieve()
-                    .toBodilessEntity();
+        restClient.post()
+                .uri(mockApiProperties.getSendPath())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .retrieve()
+                .toBodilessEntity();
+    }
 
-        } catch (RestClientResponseException e) {
-            throw new NotificationSendException(
+    private NotificationSendException mapToNotificationSendException(Throwable throwable) {
+        Throwable cause = unwrap(throwable);
+
+        if (cause instanceof NotificationSendException e) {
+            return e;
+        }
+
+        if (cause instanceof RestClientResponseException e) {
+            return new NotificationSendException(
                     FailureType.HTTP_FAIL,
                     e.getStatusCode().value(),
-                    resolveHttpReason(e.getStatusCode().value()), e
-            );
-
-        } catch (ResourceAccessException e) {
-            throw classifyResourceAccessException(e);
-
-        } catch (Exception e) {
-            throw new NotificationSendException(
-                    FailureType.CONNECT_FAIL,
-                    null,
-                    "unexpected client error", e
+                    resolveHttpReason(e.getStatusCode().value()),
+                    e
             );
         }
+
+        if (cause instanceof ResourceAccessException e) {
+            return classifyResourceAccessException(e);
+        }
+
+        return new NotificationSendException(
+                FailureType.CONNECT_FAIL,
+                null,
+                "circuit breaker fallback",
+                cause
+        );
+    }
+
+    private Throwable unwrap(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current != current.getCause()) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private NotificationSendException classifyResourceAccessException(ResourceAccessException e) {

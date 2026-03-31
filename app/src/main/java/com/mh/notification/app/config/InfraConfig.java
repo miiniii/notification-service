@@ -27,4 +27,5 @@ public class InfraConfig {
 
         return Redisson.create(config);
     }
+
 }
