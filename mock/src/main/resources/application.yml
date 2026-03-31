@@ -9,7 +9,7 @@ spring:
       accept-case-insensitive-enums: true
 
 mock:
-  mode: ALWAYS_FAIL # RANDOM | ALWAYS_SUCCESS | ALWAYS_FAIL | ALWAYS_DELAY
+  mode: ALWAYS_SUCCESS # RANDOM | ALWAYS_SUCCESS | ALWAYS_FAIL | ALWAYS_DELAY
   latency:
     enabled: true
     probability: 0.25
@@ -17,10 +17,10 @@ mock:
     max-ms: 4000
   failure:
     enabled: true
-#    probability: 0.10
-#    types: [500, 503, 429]
-    probability: 1.0
-    types: [503]
+    probability: 0.10
+    types: [500, 503, 429]
+#    probability: 1.0
+#    types: [503]
 
   log:
     include-masked-message-preview: false
