@@ -9,7 +9,7 @@ spring:
       accept-case-insensitive-enums: true
 
 mock:
-  mode: ALWAYS_SUCCESS # RANDOM | ALWAYS_SUCCESS | ALWAYS_FAIL | ALWAYS_DELAY
+  mode: ALWAYS_FAIL # RANDOM | ALWAYS_SUCCESS | ALWAYS_FAIL | ALWAYS_DELAY
   latency:
     enabled: true
     probability: 0.25

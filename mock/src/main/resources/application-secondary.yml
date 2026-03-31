@@ -1,0 +1,21 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: mocksend-secondary
+
+mock:
+  mode: ALWAYS_SUCCESS
+  latency:
+    enabled: true
+    probability: 0.25
+    min-ms: 800
+    max-ms: 4000
+  failure:
+    enabled: false
+    probability: 0.0
+    types: [500]
+  log:
+    include-masked-message-preview: false
+    message-preview-length: 20

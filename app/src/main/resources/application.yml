@@ -43,3 +43,9 @@ mock-api:
   send-path: /mock/send
   connect-timeout-ms: 1000
   read-timeout-ms: 3000
+
+secondary-mock-api:
+  base-url: http://localhost:8082 # 일단 mock 서버로
+  send-path: /mock/send
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000

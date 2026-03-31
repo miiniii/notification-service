@@ -4,16 +4,17 @@ import com.mh.notification.application.dto.NotificationMessage;
 import com.mh.notification.application.sender.NotificationSender;
 import com.mh.notification.infrastructure.client.mock.MockApiClient;
 import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
+import com.mh.notification.infrastructure.gateway.NotificationSendGateway;
 
 import java.util.Map;
 import java.util.UUID;
 
 public abstract class AbstractMockNotificationSender implements NotificationSender {
 
-    private final MockApiClient mockApiClient;
+    private final NotificationSendGateway notificationSendGateway;
 
-    protected AbstractMockNotificationSender(MockApiClient mockApiClient) {
-        this.mockApiClient = mockApiClient;
+    protected AbstractMockNotificationSender(NotificationSendGateway notificationSendGateway) {
+        this.notificationSendGateway = notificationSendGateway;
     }
 
     @Override
@@ -26,7 +27,7 @@ public abstract class AbstractMockNotificationSender implements NotificationSend
                 buildMetadata(message)
         );
 
-        mockApiClient.send(request);
+        notificationSendGateway.send(request);
     }
 
     protected String createRequestId(NotificationMessage message) {

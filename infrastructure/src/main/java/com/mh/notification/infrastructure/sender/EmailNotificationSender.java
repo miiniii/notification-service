@@ -2,7 +2,7 @@ package com.mh.notification.infrastructure.sender;
 
 import com.mh.notification.application.dto.NotificationMessage;
 import com.mh.notification.domain.NotificationChannel;
-import com.mh.notification.infrastructure.client.mock.MockApiClient;
+import com.mh.notification.infrastructure.gateway.NotificationSendGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class EmailNotificationSender extends AbstractMockNotificationSender {
 
-    public EmailNotificationSender(MockApiClient mockApiClient) {
-        super(mockApiClient);
+    public EmailNotificationSender(NotificationSendGateway notificationSendGateway) {
+        super(notificationSendGateway);
     }
 
     @Override
