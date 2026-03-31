@@ -21,6 +21,9 @@ redis-server
 # 서버 실행
 ./gradlew bootRun
 
+# Mock API 실행
+./gradlew :mock:bootRun
+
 # 알림 생성 API 호출
 curl -X POST http://localhost:8080/api/notifications \
   -H "Content-Type: application/json" \
