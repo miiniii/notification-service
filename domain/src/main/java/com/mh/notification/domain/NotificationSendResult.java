@@ -32,6 +32,11 @@ public class NotificationSendResult {
     @Column(name = "failure_reason")
     private String failureReason;
 
+    @Enumerated(EnumType.STRING)
+    private FailureType failureType;
+
+    private Integer failureStatusCode;
+
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
@@ -47,12 +52,16 @@ public class NotificationSendResult {
                                    SendStatus status,
                                    int retryCount,
                                    String failureReason,
+                                   FailureType failureType,
+                                   Integer failureStatusCode,
                                    LocalDateTime processedAt) {
         this.notificationId = notificationId;
         this.channel = channel;
         this.status = status;
         this.retryCount = retryCount;
         this.failureReason = failureReason;
+        this.failureType = failureType;
+        this.failureStatusCode = failureStatusCode;
         this.processedAt = processedAt;
     }
 
@@ -65,11 +74,13 @@ public class NotificationSendResult {
                 .status(SendStatus.SUCCESS)
                 .retryCount(retryCount)
                 .failureReason(null)
+                .failureType(null)
+                .failureStatusCode(null)
                 .processedAt(now)
                 .build();
     }
 
-    public static NotificationSendResult failed(Long notificationId, NotificationChannel channel, int retryCount, String failureReason) {
+    public static NotificationSendResult failed(Long notificationId, NotificationChannel channel, int retryCount, FailureType failureType, Integer failureStatusCode, String failureReason) {
         LocalDateTime now = LocalDateTime.now();
 
         return NotificationSendResult.builder()
@@ -78,6 +89,8 @@ public class NotificationSendResult {
                 .status(SendStatus.FAILED)
                 .retryCount(retryCount)
                 .failureReason(failureReason)
+                .failureType(failureType)
+                .failureStatusCode(failureStatusCode)
                 .processedAt(now)
                 .build();
     }

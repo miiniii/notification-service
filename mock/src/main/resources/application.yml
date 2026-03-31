@@ -19,6 +19,7 @@ mock:
     enabled: true
     probability: 0.10
     types: [500, 503, 429]
+
   log:
     include-masked-message-preview: false
     message-preview-length: 20

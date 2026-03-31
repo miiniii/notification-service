@@ -1,5 +1,7 @@
 package com.mh.notification.infrastructure.client.mock;
 
+import com.mh.notification.application.exception.NotificationSendException;
+import com.mh.notification.domain.FailureType;
 import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -37,41 +39,66 @@ public class MockApiClient {
                     .toBodilessEntity();
 
         } catch (RestClientResponseException e) {
-            throw new IllegalStateException(
-                    "MOCK_API_HTTP_FAIL: status=" + e.getStatusCode().value()
-                            + ", body=" + safe(e.getResponseBodyAsString()),
-                    e
+            throw new NotificationSendException(
+                    FailureType.HTTP_FAIL,
+                    e.getStatusCode().value(),
+                    resolveHttpReason(e.getStatusCode().value()), e
             );
 
         } catch (ResourceAccessException e) {
             throw classifyResourceAccessException(e);
 
         } catch (Exception e) {
-            throw new IllegalStateException("MOCK_API_CONNECT_FAIL: unexpected client error", e);
+            throw new NotificationSendException(
+                    FailureType.CONNECT_FAIL,
+                    null,
+                    "unexpected client error", e
+            );
         }
     }
 
-    private IllegalStateException classifyResourceAccessException(ResourceAccessException e) {
+    private NotificationSendException classifyResourceAccessException(ResourceAccessException e) {
         Throwable cause = e.getCause();
 
         if (cause instanceof SocketTimeoutException) {
-            return new IllegalStateException("MOCK_API_TIMEOUT: request timed out", e);
+            return new NotificationSendException(
+                    FailureType.TIMEOUT,
+                    null,
+                    "request timed out", e
+            );
         }
 
         if (cause instanceof ConnectException) {
-            return new IllegalStateException("MOCK_API_CONNECT_FAIL: connection refused", e);
+            return new NotificationSendException(
+                    FailureType.CONNECT_FAIL,
+                    null,
+                    "connection refused", e
+            );
         }
 
         String message = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
 
         if (message.contains("timed out")) {
-            return new IllegalStateException("MOCK_API_TIMEOUT: request timed out", e);
+            return new NotificationSendException(
+                    FailureType.TIMEOUT,
+                    null,
+                    "request timed out", e
+            );
         }
 
-        return new IllegalStateException("MOCK_API_CONNECT_FAIL: resource access failed", e);
+        return new NotificationSendException(
+                FailureType.CONNECT_FAIL,
+                null,
+                "resource access failed", e
+        );
     }
 
-    private String safe(String value) {
-        return (value == null || value.isBlank()) ? "empty" : value;
+    private String resolveHttpReason(int statusCode) {
+        return switch (statusCode) {
+            case 429 -> "rate limited";
+            case 503 -> "service unavailable";
+            case 500 -> "mock internal error";
+            default -> "http error";
+        };
     }
 }

@@ -2,10 +2,12 @@ package com.mh.notification.application.service;
 
 import com.mh.notification.application.dto.ConsumeResult;
 import com.mh.notification.application.dto.NotificationMessage;
+import com.mh.notification.application.exception.NotificationSendException;
 import com.mh.notification.application.outbox.NotificationQueuePublisher;
 import com.mh.notification.application.port.NotificationDistributedLockManager;
 import com.mh.notification.application.port.NotificationSendResultRepository;
 import com.mh.notification.application.sender.NotificationSender;
+import com.mh.notification.domain.FailureType;
 import com.mh.notification.domain.NotificationSendResult;
 import com.mh.notification.domain.SendStatus;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +24,8 @@ import java.util.List;
 public class NotificationMessageConsumer {
 
     private static final int MAX_RETRY_COUNT = 3;
-    private static final long RETRY_DELAY_SECONDS = 30L;
+    private static final long DEFAULT_RETRY_DELAY_SECONDS = 30L;
+    private static final long RATE_LIMIT_RETRY_DELAY_SECONDS = 60L;
     private static final long LOCK_WAIT_MILLIS = 100L;
     private static final long LOCK_LEASE_MILLIS = 5000L;
 
@@ -63,7 +66,9 @@ public class NotificationMessageConsumer {
             }
 
             if (message.retryCount() < MAX_RETRY_COUNT) {
-                NotificationMessage retryMessage = message.incrementRetry(LocalDateTime.now().plusSeconds(RETRY_DELAY_SECONDS));
+                long retryDelaySeconds = resolveRetryDelaySeconds(result);
+                NotificationMessage retryMessage = message.incrementRetry(LocalDateTime.now().plusSeconds(retryDelaySeconds));
+
                 notificationQueuePublisher.publishToWait(retryMessage);
 
                 log.info("[RETRY] moved to WAIT. notificationId={}, channel={}, retryCount={}", message.notificationId(), message.channel(), retryMessage.retryCount());
@@ -98,9 +103,17 @@ public class NotificationMessageConsumer {
             //Thread.sleep(5000); //락 테스트용
             sender.send(message);
             return NotificationSendResult.success(message.notificationId(), message.channel(), retryCount);
+        } catch (NotificationSendException e) {
+            return NotificationSendResult.failed(
+                    message.notificationId(),
+                    message.channel(),
+                    retryCount,
+                    e.getFailureType(),
+                    e.getFailureStatusCode(),
+                    e.getMessage()
+            );
         } catch (Exception e) {
-            String failureReason = extractFailureReason(e);
-            return NotificationSendResult.failed(message.notificationId(), message.channel(), retryCount, failureReason);
+            return NotificationSendResult.failed(message.notificationId(), message.channel(), retryCount, FailureType.CONNECT_FAIL, null, extractFailureReason(e));
         }
     }
 
@@ -113,5 +126,15 @@ public class NotificationMessageConsumer {
 
     private String buildLockKey(NotificationMessage message) {
         return "lock:notification:" + message.notificationId() + ":" + message.channel().name();
+    }
+
+    private long resolveRetryDelaySeconds(NotificationSendResult result) {
+        if (result.getFailureType() == FailureType.HTTP_FAIL
+            && result.getFailureStatusCode() != null
+            && result.getFailureStatusCode() == 429) {
+            return RATE_LIMIT_RETRY_DELAY_SECONDS;
+        }
+
+        return DEFAULT_RETRY_DELAY_SECONDS;
     }
 }
