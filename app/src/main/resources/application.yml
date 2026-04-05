@@ -22,3 +22,30 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      mockApi:
+        slidingWindowSize: 10  # 최근 10건 중
+        minimumNumberOfCalls: 5  # 최소 5건 이상 호출이 쌓였을때
+        failureRateThreshold: 50  # 실패율이 50% 넘어가면 오픈
+        waitDurationInOpenState: 30s  # 오픈 상태 30초 유지
+        permittedNumberOfCallsInHalfOpenState: 3 # half-open에서 3건 실험 호출
+  timelimiter:
+    instances:
+      mockApi:
+        timeoutDuration: 3s
+        cancelRunningFuture: true
+
+mock-api:
+  base-url: http://localhost:8081
+  send-path: /mock/send
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
+
+secondary-mock-api:
+  base-url: http://localhost:8082 # 일단 mock 서버로
+  send-path: /mock/send
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000

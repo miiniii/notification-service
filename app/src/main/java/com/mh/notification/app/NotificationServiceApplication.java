@@ -3,6 +3,7 @@ package com.mh.notification.app;
 import com.mh.notification.domain.Notification;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -11,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EntityScan(basePackageClasses = Notification.class )
 @EnableJpaRepositories(basePackages = "com.mh.notification.infrastructure.persistence")
 @EnableScheduling
+@ConfigurationPropertiesScan(basePackages = "com.mh.notification")
 public class NotificationServiceApplication {
 
     public static void main(String[] args) {

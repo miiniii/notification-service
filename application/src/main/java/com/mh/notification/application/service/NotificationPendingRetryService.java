@@ -6,11 +6,9 @@ import com.mh.notification.application.dto.NotificationMessage;
 import com.mh.notification.application.dto.StreamMessage;
 import com.mh.notification.application.port.NotificationMessageDeserializer;
 import com.mh.notification.application.port.NotificationMessageStreamAcknowledger;
-import com.mh.notification.application.port.NotificationMessageStreamDeleter;
-import com.mh.notification.application.port.NotificationMessageStreamReader;
+import com.mh.notification.application.port.NotificationPendingMessageReclaimer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.info.ProjectInfoProperties;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -21,29 +19,27 @@ import java.util.concurrent.Future;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class NotificationStreamConsumeService {
+public class NotificationPendingRetryService {
 
-    private final NotificationMessageStreamReader notificationMessageStreamReader;
+    private final NotificationPendingMessageReclaimer notificationPendingMessageReclaimer;
     private final NotificationMessageDeserializer notificationMessageDeserializer;
     private final NotificationMessageConsumer notificationMessageConsumer;
     private final NotificationMessageStreamAcknowledger notificationMessageStreamAcknowledger;
     private final ExecutorService notificationVirtualThreadExecutor;
-    private final ProjectInfoProperties projectInfoProperties;
 
-    public void consumeOnce() {
-        List<StreamMessage> messages = notificationMessageStreamReader.readMessages();
+    public void retryPendingMessages() {
+        List<StreamMessage> pendingMessages = notificationPendingMessageReclaimer.reclaimPendingMessages();
+
+        if (pendingMessages.isEmpty()) {
+            return;
+        }
+
+        log.info("[PEL RETRY] pending message count={}", pendingMessages.size());
 
         List<Future<ConsumeTaskResult>> futures = new ArrayList<>();
 
-        for (StreamMessage streamMessage : messages) {
-            futures.add(notificationVirtualThreadExecutor.submit(() -> {
-                NotificationMessage message =
-                        notificationMessageDeserializer.deserialize(streamMessage.payload());
-
-                ConsumeResult result = notificationMessageConsumer.consume(message);
-
-                return new ConsumeTaskResult(streamMessage.recordId(), message, result);
-            }));
+        for (StreamMessage streamMessage : pendingMessages) {
+            futures.add(notificationVirtualThreadExecutor.submit(() -> processMessage(streamMessage)));
         }
 
         for (Future<ConsumeTaskResult> future : futures) {
@@ -53,15 +49,29 @@ public class NotificationStreamConsumeService {
                 if (shouldAck(taskResult.result())) {
                     notificationMessageStreamAcknowledger.ack(taskResult.recordId());
 
-                    log.info("[ACK] notificationId={}, channel={}, result={}",
+                    log.info("[PEL RETRY ACK] notificationId={}, channel={}, result={}",
+                            taskResult.message().notificationId(),
+                            taskResult.message().channel(),
+                            taskResult.result());
+                } else {
+                    log.info("[PEL RETRY KEEP] notificationId={}, channel={}, result={}",
                             taskResult.message().notificationId(),
                             taskResult.message().channel(),
                             taskResult.result());
                 }
             } catch (Exception e) {
-                log.error("[CONSUME ERROR] virtual thread task failed", e);
+                log.error("[PEL RETRY ERROR] virtual thread task failed", e);
             }
         }
+    }
+
+    private ConsumeTaskResult processMessage(StreamMessage streamMessage) {
+        NotificationMessage message =
+                notificationMessageDeserializer.deserialize(streamMessage.payload());
+
+        ConsumeResult result = notificationMessageConsumer.consume(message);
+
+        return new ConsumeTaskResult(streamMessage.recordId(), message, result);
     }
 
     private boolean shouldAck(ConsumeResult result) {
@@ -70,5 +80,4 @@ public class NotificationStreamConsumeService {
                 || result == ConsumeResult.RETRYABLE_FAIL
                 || result == ConsumeResult.DEAD_LETTERED;
     }
-
 }

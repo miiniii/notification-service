@@ -3,6 +3,7 @@
 여러 서비스의 알림 요청을 중앙에서 처리 후, 안정적으로 발송하기 위한 알림 미들 서버 개발
 
 ### 아키텍처
+![img_3.png](img_3.png)
 
 ### 기술스텍
 - Java, Spring Boot, H2, Redis(Redis Stream - 메세지 큐 용도), gradle
@@ -19,6 +20,9 @@ redis-server
 
 # 서버 실행
 ./gradlew bootRun
+
+# Mock API 실행
+./gradlew :mock:bootRun
 
 # 알림 생성 API 호출
 curl -X POST http://localhost:8080/api/notifications \
@@ -105,3 +109,129 @@ WORK 재처리
     - 다른 알림들은 병렬처리 + 같은 메세지의 중복 발송만 방지
 >Consumer <br>
 >락 먼저 획득 -> 멱등성 체크 -> sender 호출 -> 결과 저장/WAIT/DEAD  -> lock 해제
+
+### 1-3. 개선 사항
+
+#### 1-3-1. retryCount추가
+
+- NotificationMessage DTO에만 retryCount 존재 
+- 스트림 메시지가 유실되면 재시도 횟수 정보도 함께 유실(운영 추적 어려움)
+- 해결 방안 : NotificationSendResult 엔티티에 retryCount 필드 추가
+
+```markdown
+기존 구조
+
+[메시지 소비]
+   ↓
+[락 획득 성공]
+   ↓
+[중복 발송 여부 확인]
+   ↓
+[sendSafely() 실행]
+   ↓
+┌───────────────────────────────────────────────┐
+│ SUCCESS                   → DB 저장 후 종료      │
+│ FAIL + retry 가능        → WAIT 발행, 저장 안 함   │
+│ FAIL + retry 불가        → DEAD 발행 후 저장      │
+└───────────────────────────────────────────────┘
+```
+```markdown
+개선 후 구조
+
+[메시지 소비]
+   ↓
+[락 획득 성공]
+   ↓
+[중복 발송 여부 확인]
+   ↓
+[sendSafely() 실행]
+   ↓
+[result 생성]
+   ↓
+[DB 저장]  ← 모든 실제 발송 시도 기록
+   ↓
+┌───────────────────────────────────────────────┐
+│ SUCCESS                   → 종료               │
+│ FAIL + retry 가능        → WAIT 발행            │
+│ FAIL + retry 불가        → DEAD 발행            │
+└───────────────────────────────────────────────┘
+```
+
+#### 1-3-2. 메시지 유실 문제
+```java
+public void consumeOnce() {
+  List<StreamMessage> messages = notificationMessageStreamReader.readMessages();
+
+  for (StreamMessage streamMessage : messages) {
+    NotificationMessage message = notificationMessageDeserializer.deserialize(streamMessage.payload());
+    notificationMessageConsumer.consume(message);
+    notificationMessageStreamDeleter.delete(streamMessage.recordId()); // 메시지 유실 문제 발생
+  }
+}
+```
+문제
+- consume() 내부에서 락 획득에 실패하면 메시지 처리 스킵 but 스트림에서는 결과와 무관하게 삭제
+  - 처리되지 않은 메시지 유실 문제 발생
+
+
+구조 개선
+
+| 항목 | 변경 내용 |
+|---|---|
+| 소비 구조 | 단순 조회/삭제 방식에서 Consumer Group 기반 소비 구조로 변경 |
+| 완료 처리 방식 | 무조건 delete 방식에서 결과 기반 Manual Ack 방식으로 변경 |
+| 미처리 메시지 관리 | 락 실패 메시지를 삭제하지 않고 PEL에 남기도록 변경 |
+| 복구 방식 | PEL에 남은 메시지를 `XPENDING + XCLAIM`으로 reclaim 후 재처리 |
+| 멀티 인스턴스 대응 | UUID 기반 consumer name으로 consumer 충돌 가능성 완화 |
+
+#### 1-3-3. 트랜잭션 문제
+```java
+@transactional
+public void publishPendingOutboxes() {
+  List pendingOutboxes = notificationOutboxRepository.findAllByStatus(OutboxStatus.PENDING);
+  for (NotificationOutbox outbox : pendingOutboxes) {
+    notificationMessagePublisher.publish(outbox); // 문제 발생
+    outbox.markPublished();
+  }
+}
+```
+- DB 트랜잭션과 외부 시스템(Redis 호출)을 한 덩어리로 다루고 있음
+  - Redis 호출은 DB 트랜잭션에 포함되지 않는 외부 시스템 호출이므로 롤백 불가능
+
+해결 방향
+- 배치 전체 트랜잭션 제거
+- Outbox를 건별로 독립 처리하도록 구조 변경
+  - 스프링 트랜잭션은 프록시 기반이라, 동일 클래스 내부 메서드 호출(self-invocation)에는 적용되지 않을 수 있어 별도 클래스로 분리
+
+
+### 1-4. Mock Send API 연동
+
+#### 1-4-1. 아키텍처
+![img_4.png](img_4.png)
+
+#### 1-4-2. 외부 API 연동시 고려 사항
+1) 외부 API 장애 대응 구조
+   - 외부 API 호출 실패 시 timeout, connect fail, http fail(429/500/503)로 구분해서 저장
+2) 호출 제한
+   - 429(Too Many Requests) 발생 시, 더 긴 backoff 적용(60s)
+3) Circuit Breaker 적용
+   - 외부 API 연속 실패 시 추가 호출이 무의미하게 누적되지 않도록 적용
+4) Fallback 처리
+   - 메인 API에서 timeout, connect fail, 503 같은 장애성 실패 발생시, secondary API로 우회 호출
+
+#### 1-4-3. 채널별 평균 성능 비교
+고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : ALWAYS_SUCCESS, Errors : 0건
+
+| 채널 | 평균 TPS | 평균 Peak TPS | 평균 응답시간 (ms) |
+|------|----------|---------------|--------------------|
+| EMAIL | 5,036.2 | 8,812.0 | 52.91 |
+| SMS | 7,626.3 | 9,580.8 | 29.61 |
+| KAKAO_TALK | 7,522.2 | 9,705.5 | 32.56 |
+
+- Email 채널은 평균 응답시간이 더 높게 측정되어 동일 시간 동안 처리 가능한 요청 수가 상대적으로 적음
+- requestId 로깅 추가 후 병목 원인 추가로 확인 예정
+- 비동기 처리 또는 가상 스레드 적용 후 성능 비교
+
+
+
+

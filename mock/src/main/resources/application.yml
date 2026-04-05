@@ -1,0 +1,27 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: mocksend
+  jackson:
+    mapper:
+      accept-case-insensitive-enums: true
+
+mock:
+  mode: ALWAYS_SUCCESS # RANDOM | ALWAYS_SUCCESS | ALWAYS_FAIL | ALWAYS_DELAY
+  latency:
+    enabled: true
+    probability: 0.25
+    min-ms: 800
+    max-ms: 4000
+  failure:
+    enabled: true
+    probability: 0.10
+    types: [500, 503, 429]
+#    probability: 1.0
+#    types: [503]
+
+  log:
+    include-masked-message-preview: false
+    message-preview-length: 20
