@@ -37,6 +37,6 @@ public class EmailNotificationSender extends AbstractMockNotificationSender {
 
     @Override
     protected String resolveReceiver(NotificationMessage message) {
-        return "test-email@example.com";
+        return message.receiver();
     }
 }

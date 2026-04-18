@@ -71,7 +71,7 @@ public class NotificationPendingRetryService {
 
         ConsumeResult result = notificationMessageConsumer.consume(message);
 
-        return new ConsumeTaskResult(streamMessage.recordId(), message, result);
+        return new ConsumeTaskResult(streamMessage.recordId(), message, result, streamMessage.deliveryCount());
     }
 
     private boolean shouldAck(ConsumeResult result) {

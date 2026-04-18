@@ -2,13 +2,13 @@ package com.mh.notification.infrastructure.sender;
 
 import com.mh.notification.application.dto.NotificationMessage;
 import com.mh.notification.application.sender.NotificationSender;
-import com.mh.notification.infrastructure.client.mock.MockApiClient;
-import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
+import com.mh.notification.infrastructure.client.mock.dto.MockApiSendRequest;
 import com.mh.notification.infrastructure.gateway.NotificationSendGateway;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
-import java.util.UUID;
 
+@Slf4j
 public abstract class AbstractMockNotificationSender implements NotificationSender {
 
     private final NotificationSendGateway notificationSendGateway;
@@ -19,20 +19,16 @@ public abstract class AbstractMockNotificationSender implements NotificationSend
 
     @Override
     public void send(NotificationMessage message) {
-        MockSendRequest request = new MockSendRequest(
-                createRequestId(message),
+        MockApiSendRequest request = new MockApiSendRequest(
+                message.requestId(),
                 resolveChannelType(message),
                 resolveReceiver(message),
                 buildMessage(message),
                 buildMetadata(message)
         );
 
-        notificationSendGateway.send(request);
-    }
-
-    protected String createRequestId(NotificationMessage message) {
-        String shortUuid = UUID.randomUUID().toString().substring(0, 8);
-        return "n" + message.notificationId() + "-r" + message.retryCount() + "-" + shortUuid;
+        log.info("[SENDER] traceId={}", message.requestId());
+        notificationSendGateway.send(request, message.requestId());
     }
 
     protected String buildMessage(NotificationMessage message) {

@@ -220,17 +220,34 @@ public void publishPendingOutboxes() {
    - 메인 API에서 timeout, connect fail, 503 같은 장애성 실패 발생시, secondary API로 우회 호출
 
 #### 1-4-3. 채널별 평균 성능 비교
-고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : ALWAYS_SUCCESS, Errors : 0건
+환경 ) MackBook M1 Pro
 
+고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : ALWAYS_SUCCESS, Errors : 0건
+#### 기존 구조
 | 채널 | 평균 TPS | 평균 Peak TPS | 평균 응답시간 (ms) |
 |------|----------|---------------|--------------------|
 | EMAIL | 5,036.2 | 8,812.0 | 52.91 |
 | SMS | 7,626.3 | 9,580.8 | 29.61 |
 | KAKAO_TALK | 7,522.2 | 9,705.5 | 32.56 |
 
-- Email 채널은 평균 응답시간이 더 높게 측정되어 동일 시간 동안 처리 가능한 요청 수가 상대적으로 적음
-- requestId 로깅 추가 후 병목 원인 추가로 확인 예정
-- 비동기 처리 또는 가상 스레드 적용 후 성능 비교
+- 동시 요청 처리 효율을 높이기 위해 가상 스레드 적용 
+
+#### 가상 스레드 적용
+고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : **ALWAYS_SUCCESS**, Errors : 0건
+
+| 채널 | 평균 TPS   | 평균 Peak TPS | 평균 응답시간 (ms) |
+|------|----------|--------------|--------------------|
+| EMAIL | 5,990.85 | 8,250.25 | 43.16 |
+| SMS | 7,747.50  | 9,100.00 | 33.14 |
+| KAKAO_TALK | 7,547.35 | 9,169.00 | 34.01 |
+
+```text
+Circuit Breaker 설정 
+- 초당 약 6,000 ~ 7,700건 요청 처리 기준
+- 최근 20건 중 10건 이상 실패 시 장애로 판단
+- Open 상태 10초 유지 후 Half-Open에서 5건만 시험 호출해 복구 여부 확인
+- 정상 응답 시간이 30 ~ 45ms 수준 -> timeoutDuration : 1s로 설정
+```
 
 
 

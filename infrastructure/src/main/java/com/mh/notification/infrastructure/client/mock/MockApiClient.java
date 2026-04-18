@@ -2,11 +2,11 @@ package com.mh.notification.infrastructure.client.mock;
 
 import com.mh.notification.application.exception.NotificationSendException;
 import com.mh.notification.domain.FailureType;
-import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
+import com.mh.notification.infrastructure.client.mock.dto.MockApiSendRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -20,15 +20,19 @@ import java.net.SocketTimeoutException;
 public class MockApiClient {
 
     private static final String CIRCUIT_BREAKER_ID = "mockApi";
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     private final MockApiProperties mockApiProperties;
     private final CircuitBreakerFactory<?, ?> circuitBreakerFactory;
 
-    public void send(MockSendRequest request) {
+    @Qualifier("mockApiRestClient")
+    private final RestClient restClient;
+
+    public void send(MockApiSendRequest request, String requestId) {
 
         circuitBreakerFactory.create(CIRCUIT_BREAKER_ID).run(
                 () -> {
-                    doSend(request);
+                    doSend(request, requestId);
                     return null;
                 },
                 throwable -> {
@@ -38,58 +42,79 @@ public class MockApiClient {
 
     }
 
-    private void doSend(MockSendRequest request) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(mockApiProperties.getConnectTimeoutMs());
-        requestFactory.setReadTimeout(mockApiProperties.getReadTimeoutMs());
-
-        RestClient restClient = RestClient.builder()
-                .baseUrl(mockApiProperties.getBaseUrl())
-                .requestFactory(requestFactory)
-                .build();
-
+    private void doSend(MockApiSendRequest request, String requestId) {
         restClient.post()
                 .uri(mockApiProperties.getSendPath())
                 .contentType(MediaType.APPLICATION_JSON)
+                .header(REQUEST_ID_HEADER, requestId)
                 .body(request)
                 .retrieve()
                 .toBodilessEntity();
     }
 
     private NotificationSendException mapToNotificationSendException(Throwable throwable) {
-        Throwable cause = unwrap(throwable);
-
-        if (cause instanceof NotificationSendException e) {
-            return e;
+        NotificationSendException sendException =
+                findCause(throwable, NotificationSendException.class);
+        if (sendException != null) {
+            return sendException;
         }
 
-        if (cause instanceof RestClientResponseException e) {
+        RestClientResponseException responseException =
+                findCause(throwable, RestClientResponseException.class);
+        if (responseException != null) {
             return new NotificationSendException(
                     FailureType.HTTP_FAIL,
-                    e.getStatusCode().value(),
-                    resolveHttpReason(e.getStatusCode().value()),
-                    e
+                    responseException.getStatusCode().value(),
+                    resolveHttpReason(responseException.getStatusCode().value()),
+                    responseException
             );
         }
 
-        if (cause instanceof ResourceAccessException e) {
-            return classifyResourceAccessException(e);
+        ResourceAccessException resourceAccessException =
+                findCause(throwable, ResourceAccessException.class);
+        if (resourceAccessException != null) {
+            return classifyResourceAccessException(resourceAccessException);
+        }
+
+        SocketTimeoutException socketTimeoutException =
+                findCause(throwable, SocketTimeoutException.class);
+        if (socketTimeoutException != null) {
+            return new NotificationSendException(
+                    FailureType.TIMEOUT,
+                    null,
+                    "request timed out",
+                    socketTimeoutException
+            );
+        }
+
+        ConnectException connectException =
+                findCause(throwable, ConnectException.class);
+        if (connectException != null) {
+            return new NotificationSendException(
+                    FailureType.CONNECT_FAIL,
+                    null,
+                    "connection refused",
+                    connectException
+            );
         }
 
         return new NotificationSendException(
                 FailureType.CONNECT_FAIL,
                 null,
                 "circuit breaker fallback",
-                cause
+                throwable
         );
     }
 
-    private Throwable unwrap(Throwable throwable) {
+    private <T extends Throwable> T findCause(Throwable throwable, Class<T> type) {
         Throwable current = throwable;
-        while (current.getCause() != null && current != current.getCause()) {
+        while (current != null) {
+            if (type.isInstance(current)) {
+                return type.cast(current);
+            }
             current = current.getCause();
         }
-        return current;
+        return null;
     }
 
     private NotificationSendException classifyResourceAccessException(ResourceAccessException e) {
@@ -99,7 +124,8 @@ public class MockApiClient {
             return new NotificationSendException(
                     FailureType.TIMEOUT,
                     null,
-                    "request timed out", e
+                    "request timed out",
+                    e
             );
         }
 
@@ -107,24 +133,29 @@ public class MockApiClient {
             return new NotificationSendException(
                     FailureType.CONNECT_FAIL,
                     null,
-                    "connection refused", e
+                    "connection refused",
+                    e
             );
         }
 
         String message = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
 
-        if (message.contains("timed out")) {
+        if (message.contains("timed out")
+                || message.contains("timeout")
+                || message.contains("read timed out")) {
             return new NotificationSendException(
                     FailureType.TIMEOUT,
                     null,
-                    "request timed out", e
+                    "request timed out",
+                    e
             );
         }
 
         return new NotificationSendException(
                 FailureType.CONNECT_FAIL,
                 null,
-                "resource access failed", e
+                "resource access failed",
+                e
         );
     }
 

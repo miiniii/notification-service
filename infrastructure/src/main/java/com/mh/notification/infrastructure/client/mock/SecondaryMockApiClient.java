@@ -2,11 +2,11 @@ package com.mh.notification.infrastructure.client.mock;
 
 import com.mh.notification.application.exception.NotificationSendException;
 import com.mh.notification.domain.FailureType;
-import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
+import com.mh.notification.infrastructure.client.mock.dto.MockApiSendRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -20,15 +20,19 @@ import java.net.SocketTimeoutException;
 public class SecondaryMockApiClient {
 
     private static final String CIRCUIT_BREAKER_ID = "secondaryMockApi";
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
 
     private final SecondaryMockApiProperties properties;
     private final CircuitBreakerFactory<?, ?> circuitBreakerFactory;
 
-    public void send(MockSendRequest request) {
+    @Qualifier("secondaryMockApiRestClient")
+    private final RestClient restClient;
+
+    public void send(MockApiSendRequest request, String requestId) {
 
         circuitBreakerFactory.create(CIRCUIT_BREAKER_ID).run(
                 () -> {
-                    doSend(request);
+                    doSend(request, requestId);
                     return null;
                 },
                 throwable -> {
@@ -38,19 +42,11 @@ public class SecondaryMockApiClient {
 
     }
 
-    private void doSend(MockSendRequest request) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(properties.getConnectTimeoutMs());
-        requestFactory.setReadTimeout(properties.getReadTimeoutMs());
-
-        RestClient restClient = RestClient.builder()
-                .baseUrl(properties.getBaseURL())
-                .requestFactory(requestFactory)
-                .build();
-
+    private void doSend(MockApiSendRequest request, String requestId) {
         restClient.post()
                 .uri(properties.getSendPath())
                 .contentType(MediaType.APPLICATION_JSON)
+                .header(REQUEST_ID_HEADER, requestId)
                 .body(request)
                 .retrieve()
                 .toBodilessEntity();

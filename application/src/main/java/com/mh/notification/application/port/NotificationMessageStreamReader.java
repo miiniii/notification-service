@@ -6,4 +6,6 @@ import java.util.List;
 
 public interface NotificationMessageStreamReader {
     List<StreamMessage> readMessages();
+
+    List<StreamMessage> reclaimPendingMessages();
 }

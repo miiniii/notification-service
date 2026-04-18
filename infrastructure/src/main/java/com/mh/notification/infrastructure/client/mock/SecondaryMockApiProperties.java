@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Setter
 public class SecondaryMockApiProperties {
 
-    private String baseURL;
+    private String baseUrl;
     private String sendPath;
     private int connectTimeoutMs;
     private int readTimeoutMs;

@@ -4,6 +4,7 @@ import com.mh.notification.application.dto.StreamMessage;
 import com.mh.notification.application.port.NotificationMessageStreamReader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Range;
+import org.springframework.data.redis.connection.RedisStreamCommands;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,8 @@ public class RedisNotificationMessageStreamReader implements NotificationMessage
 
     private static final String STREAM_KEY = NotificationStreamKeys.WORK;
     private static final String GROUP_NAME = "notification-group";
+    private static final long RECLAIM_BATCH_SIZE = 10L;
+    private static final Duration MIN_IDLE_TIME = Duration.ofSeconds(30);
 
     private final StringRedisTemplate stringRedisTemplate;
     private final NotificationConsumerIdentityProvider consumerIdentityProvider;
@@ -47,5 +50,54 @@ public class RedisNotificationMessageStreamReader implements NotificationMessage
         }
 
         return messages;
+    }
+
+    @Override
+    public List<StreamMessage> reclaimPendingMessages() {
+        PendingMessages pendingMessages = stringRedisTemplate.opsForStream()
+                .pending(
+                        STREAM_KEY,
+                        GROUP_NAME,
+                        Range.unbounded(),
+                        RECLAIM_BATCH_SIZE
+                );
+        List<StreamMessage> reclaimedMessages = new ArrayList<>();
+
+        if (pendingMessages == null || pendingMessages.isEmpty()) {
+            return reclaimedMessages;
+        }
+
+        for (PendingMessage pendingMessage : pendingMessages) {
+            if (pendingMessage.getElapsedTimeSinceLastDelivery().compareTo(MIN_IDLE_TIME) < 0) {
+                continue;
+            }
+
+            List<MapRecord<String, Object, Object>> claimedRecords = stringRedisTemplate.opsForStream()
+                    .claim(STREAM_KEY,
+                            GROUP_NAME,
+                            consumerIdentityProvider.getConsumerName(),
+                            MIN_IDLE_TIME,
+                            pendingMessage.getId()
+                    );
+
+            if (claimedRecords == null || claimedRecords.isEmpty()) {
+                continue;
+            }
+
+            for (MapRecord<String, Object, Object> claimedRecord : claimedRecords) {
+                Map<Object, Object> value = claimedRecord.getValue();
+                String payload = String.valueOf(value.get("payload"));
+
+                reclaimedMessages.add(
+                        StreamMessage.of(
+                                claimedRecord.getId().getValue(),
+                                payload,
+                                pendingMessage.getTotalDeliveryCount()
+                        )
+                );
+            }
+
+        }
+        return reclaimedMessages;
     }
 }

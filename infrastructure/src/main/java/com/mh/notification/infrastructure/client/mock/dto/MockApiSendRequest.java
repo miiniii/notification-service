@@ -2,7 +2,7 @@ package com.mh.notification.infrastructure.client.mock.dto;
 
 import java.util.Map;
 
-public record MockSendRequest(
+public record MockApiSendRequest(
         String requestId,
         String channelType,
         String receiver,

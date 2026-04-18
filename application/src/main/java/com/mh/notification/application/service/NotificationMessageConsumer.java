@@ -36,6 +36,12 @@ public class NotificationMessageConsumer {
 
     @Transactional
     public ConsumeResult consume(NotificationMessage message) {
+        if (Thread.currentThread().isInterrupted()) {
+            log.warn("[INTERRUPTED] skip consume. notificationId={}, channel={}",
+                    message.notificationId(), message.channel());
+            return ConsumeResult.LOCK_FAILED;
+        }
+
         String lockKey = buildLockKey(message);
 
         log.info("[LOCK TRY] notificationId={}, channel={}, lockKey={}",

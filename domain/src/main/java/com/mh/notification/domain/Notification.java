@@ -18,6 +18,12 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "request_id", nullable = false, length = 50)
+    private String requestId;
+
+    @Column(name = "requester_id", nullable = false)
+    private Long requesterId;
+
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
@@ -44,13 +50,17 @@ public class Notification {
     private LocalDateTime createdAt;
 
     @Builder
-    private Notification(Long userId,
+    private Notification(String requestId,
+                         Long requesterId,
+                         Long userId,
                          String service,
                          NotificationChannel channel,
                          String title,
                          String body,
                          String targetUrl,
                          boolean isRead) {
+        this.requestId = requestId;
+        this.requesterId = requesterId;
         this.userId = userId;
         this.service = service;
         this.channel = channel;
@@ -60,13 +70,17 @@ public class Notification {
         this.isRead = isRead;
     }
 
-    public static Notification create(Long userId,
+    public static Notification create(String requestId,
+                                      Long requesterId,
+                                      Long userId,
                                       String service,
                                       NotificationChannel channel,
                                       String title,
                                       String body,
                                       String targetUrl) {
         return Notification.builder()
+                .requestId(requestId)
+                .requesterId(requesterId)
                 .userId(userId)
                 .service(service)
                 .channel(channel)

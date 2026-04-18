@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 
 public record NotificationCreateResult(
         Long id,
+        String requestId,
+        Long requesterId,
         Long userId,
         String service,
         NotificationChannel channel,
@@ -18,6 +20,8 @@ public record NotificationCreateResult(
     public static NotificationCreateResult from(Notification notification) {
         return new NotificationCreateResult(
                 notification.getId(),
+                notification.getRequestId(),
+                notification.getRequesterId(),
                 notification.getUserId(),
                 notification.getService(),
                 notification.getChannel(),

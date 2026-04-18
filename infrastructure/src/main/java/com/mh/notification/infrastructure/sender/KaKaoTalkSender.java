@@ -26,6 +26,6 @@ public class KaKaoTalkSender extends AbstractMockNotificationSender {
 
     @Override
     protected String resolveReceiver(NotificationMessage message) {
-        return "kakao-user-001";
+        return message.receiver();
     }
 }

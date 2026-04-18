@@ -27,6 +27,6 @@ public class SmsNotificationSender extends AbstractMockNotificationSender {
 
     @Override
     protected String resolveReceiver(NotificationMessage message) {
-        return "01012345678";
+        return message.receiver();
     }
 }

@@ -4,7 +4,7 @@ import com.mh.notification.application.exception.NotificationSendException;
 import com.mh.notification.domain.FailureType;
 import com.mh.notification.infrastructure.client.mock.MockApiClient;
 import com.mh.notification.infrastructure.client.mock.SecondaryMockApiClient;
-import com.mh.notification.infrastructure.client.mock.dto.MockSendRequest;
+import com.mh.notification.infrastructure.client.mock.dto.MockApiSendRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -17,21 +17,21 @@ public class NotificationSendGateway {
     private final MockApiClient primayMockApiClient;
     private final SecondaryMockApiClient secondaryMockApiClient;
 
-    public void send(MockSendRequest request) {
+    public void send(MockApiSendRequest request, String requestId) {
+        log.info("[GATEWAY] requestId={}", requestId);
+
         try {
-            primayMockApiClient.send(request);
+            primayMockApiClient.send(request, requestId);
             return;
         } catch (NotificationSendException e) {
             if (!isFallbackTarget(e)){
                 throw e;
             }
-            log.warn("[FALLBACK] primary failed. requestId={}, reason={}, trying secondary",
-                    request.requestId(), e.getMessage());
+            log.warn("[FALLBACK] primary failed. requestId={}, reason={}, trying secondary", requestId, e.getMessage());
 
-            secondaryMockApiClient.send(request);
+            secondaryMockApiClient.send(request, requestId);
 
-            log.info("[FALLBACK SUCCESS] requestId={} secondary api succeeded",
-                    request.requestId());
+            log.info("[FALLBACK SUCCESS] requestId={} secondary api succeeded", requestId);
         }
 
     }
