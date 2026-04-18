@@ -11,7 +11,8 @@ dependencies {
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
 
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-    runtimeOnly 'com.h2database:h2'
+    //runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'com.mysql:mysql-connector-j'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

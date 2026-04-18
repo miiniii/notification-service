@@ -55,7 +55,7 @@ infrastructure -> domain
 infrastructure -> application
 ```
 
-## 1. 알림발송등록 API
+## 1. 알림 발송 등록 API
 
 ### 1-1. 아키텍처
 ![img_1.png](img_1.png)
@@ -220,7 +220,7 @@ public void publishPendingOutboxes() {
    - 메인 API에서 timeout, connect fail, 503 같은 장애성 실패 발생시, secondary API로 우회 호출
 
 #### 1-4-3. 채널별 평균 성능 비교
-환경 ) MackBook M1 Pro
+환경 ) MackBook Pro(Apple M1 Pro, 16GB)
 
 고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : ALWAYS_SUCCESS, Errors : 0건
 #### 기존 구조
@@ -249,6 +249,9 @@ Circuit Breaker 설정
 - 정상 응답 시간이 30 ~ 45ms 수준 -> timeoutDuration : 1s로 설정
 ```
 
+## 2. 알림 내역 조회 API
+요청자별 최근 7일 내역 + 발송 내역 조회
 
+### 2-1. 인덱스 설계
 
 
