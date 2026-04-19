@@ -15,6 +15,9 @@ dependencies {
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
     implementation 'org.redisson:redisson:3.37.0'
 
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
     runtimeOnly 'com.mysql:mysql-connector-j'
     //runtimeOnly 'com.h2database:h2'
 }

@@ -233,7 +233,7 @@ public void publishPendingOutboxes() {
 - 동시 요청 처리 효율을 높이기 위해 가상 스레드 적용 
 
 #### 가상 스레드 적용
-고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : **ALWAYS_SUCCESS**, Errors : 0건
+고정 ) Vusers : 300, Duration : 3M, 2회 진행, mock mode : ALWAYS_SUCCESS, Errors : 0건
 
 | 채널 | 평균 TPS   | 평균 Peak TPS | 평균 응답시간 (ms) |
 |------|----------|--------------|--------------------|
@@ -253,5 +253,13 @@ Circuit Breaker 설정
 요청자별 최근 7일 내역 + 발송 내역 조회
 
 ### 2-1. 인덱스 설계
+- 데이터: Notifications 100,000건
 
+| 구분 | 실행계획 | 의미                                                     |
+|---|---|--------------------------------------------------------|
+| 인덱스 없음 | `type = ALL`<br>`key = NULL`<br>`rows = 99264`<br>`Extra = Using where; Using filesort` | 전체 테이블을 스캔한 뒤 조건 필터링과 정렬을 별도로 수행                       |
+| 단일 인덱스 | `type = ref`<br>`rows = 101`<br>`filtered = 33.33` | `requester_id` 조건 탐색은 빨라졌지만 기간 조건과 정렬은 추가 처리 필요        |
+| 복합 인덱스 | `type = range`<br>`rows = 101`<br>`filtered = 100.00`<br>`Extra = Using index condition` | `requester_id`와 `created_at` 범위 조건을 함께 활용해 쿼리 구조에 더 적합 |
 
+- 복합 인덱스 설계 : requester_id 조건 조회와 최근 7일 범위 조회, 최신순 정렬을 함께 처리하기 위해 (requester_id, created_at, id) 순서로 구성
+- 복합 인덱스 선택 : 실행계획 비교 결과, 단일 인덱스보다 조회 조건과 정렬 조건을 함께 반영해 쿼리 구조에 더 적합하다고 판단
