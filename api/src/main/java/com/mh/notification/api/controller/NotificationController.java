@@ -1,11 +1,13 @@
 package com.mh.notification.api.controller;
 
+import com.mh.notification.api.dto.CursorPageResponse;
 import com.mh.notification.api.dto.NotificationCreateRequest;
 import com.mh.notification.api.dto.NotificationCreateResponse;
 import com.mh.notification.api.dto.NotificationHistoryResponse;
 import com.mh.notification.application.dto.NotificationCreateResult;
+import com.mh.notification.application.dto.NotificationCursorResult;
 import com.mh.notification.application.dto.NotificationHistoryQueryResult;
-import com.mh.notification.application.service.NotificationQueryService;
+import com.mh.notification.application.service.NotificationCursorQueryService;
 import com.mh.notification.application.service.NotificationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 
 @RestController
 @RequiredArgsConstructor
@@ -22,7 +27,7 @@ import org.springframework.web.bind.annotation.*;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final NotificationQueryService notificationQueryService;
+    private final NotificationCursorQueryService notificationCursorQueryService;
 
     @PostMapping
     public NotificationCreateResponse createNotification(@Valid @RequestBody NotificationCreateRequest request) {
@@ -31,23 +36,30 @@ public class NotificationController {
     }
 
     @GetMapping("/history")
-    public Page<NotificationHistoryResponse> getNotificationHistory(
+    public CursorPageResponse<NotificationHistoryResponse> getNotificationHistoryWithCursor(
             @RequestParam(name = "requesterId") Long requesterId,
-            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "cursorCreatedAt", required = false) LocalDateTime cursorCreatedAt,
+            @RequestParam(name = "cursorId", required = false) Long cursorId,
             @RequestParam(name = "size", defaultValue = "20") int size
     ) {
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(
-                        Sort.Order.desc("createdAt"),
-                        Sort.Order.desc("id")
-                )
+        NotificationCursorResult<NotificationHistoryQueryResult> result =
+                notificationCursorQueryService.getRecentNotifications(
+                        requesterId,
+                        cursorCreatedAt,
+                        cursorId,
+                        size
+                );
+
+        List<NotificationHistoryResponse> content = result.content().stream()
+                .map(NotificationHistoryResponse::from)
+                .toList();
+
+        return new CursorPageResponse<>(
+                content,
+                result.hasNext(),
+                result.nextCursorCreatedAt(),
+                result.nextCursorId()
         );
-
-        Page<NotificationHistoryQueryResult> resultPage =
-                notificationQueryService.getRecentNotifications(requesterId, pageable);
-
-        return resultPage.map(NotificationHistoryResponse::from);
     }
+
 }

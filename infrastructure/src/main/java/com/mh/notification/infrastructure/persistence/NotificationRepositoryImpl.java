@@ -4,6 +4,7 @@ import com.mh.notification.application.port.NotificationRepository;
 import com.mh.notification.domain.Notification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
@@ -33,5 +34,16 @@ public class NotificationRepositoryImpl implements NotificationRepository {
     @Override
     public List<Notification> findByIds(List<Long> ids) {
         return notificationJpaRepository.findByIdIn(ids);
+    }
+
+    @Override
+    public List<Notification> findRecentByRequesterIdWithCursor(Long requesterId, LocalDateTime from, LocalDateTime cursorCreatedAt, Long cursorId, int size) {
+        return notificationJpaRepository.findRecentByRequesterIdWithCursor(
+                requesterId,
+                from,
+                cursorCreatedAt,
+                cursorId,
+                PageRequest.of(0, size)
+        );
     }
 }

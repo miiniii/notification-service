@@ -1,5 +1,6 @@
 package com.mh.notification.application.service;
 
+import com.mh.notification.application.dto.NotificationCursorResult;
 import com.mh.notification.application.dto.NotificationHistoryQueryResult;
 import com.mh.notification.application.dto.NotificationSendResultQueryResult;
 import com.mh.notification.application.port.NotificationRepository;
@@ -7,9 +8,6 @@ import com.mh.notification.application.port.NotificationSendResultRepository;
 import com.mh.notification.domain.Notification;
 import com.mh.notification.domain.NotificationSendResult;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,18 +19,34 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class NotificationQueryService {
+public class NotificationCursorQueryService {
 
     private final NotificationRepository notificationRepository;
     private final NotificationSendResultRepository notificationSendResultRepository;
 
-    public Page<NotificationHistoryQueryResult> getRecentNotifications(Long requesterId, Pageable pageable) {
+    public NotificationCursorResult<NotificationHistoryQueryResult> getRecentNotifications(
+            Long requesterId,
+            LocalDateTime cursorCreatedAt,
+            Long cursorId,
+            int size
+    ) {
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
 
-        Page<Notification> notificationPage =
-                notificationRepository.findRecentByRequesterId(requesterId, sevenDaysAgo, pageable);
+        List<Notification> notifications = notificationRepository.findRecentByRequesterIdWithCursor(
+                requesterId,
+                sevenDaysAgo,
+                cursorCreatedAt,
+                cursorId,
+                size + 1
+        );
 
-        List<Long> notificationIds = notificationPage.getContent().stream()
+        boolean hasNext = notifications.size() > size;
+
+        if (hasNext) {
+            notifications = notifications.subList(0, size);
+        }
+
+        List<Long> notificationIds = notifications.stream()
                 .map(Notification::getId)
                 .toList();
 
@@ -46,13 +60,28 @@ public class NotificationQueryService {
                                 NotificationSendResult::getNotificationId,
                                 Collectors.mapping(NotificationSendResultQueryResult::from, Collectors.toList())
                         ));
-        List<NotificationHistoryQueryResult> content = notificationPage.getContent().stream()
+
+        List<NotificationHistoryQueryResult> content = notifications.stream()
                 .map(notification -> NotificationHistoryQueryResult.of(
                         notification,
                         sendResultMap.getOrDefault(notification.getId(), List.of())
                 ))
                 .toList();
 
-        return new PageImpl<>(content, pageable, notificationPage.getTotalElements());
+        LocalDateTime nextCursorCreatedAt = null;
+        Long nextCursorId = null;
+
+        if (!content.isEmpty()) {
+            NotificationHistoryQueryResult last = content.get(content.size() - 1);
+            nextCursorCreatedAt = last.createdAt();
+            nextCursorId = last.notificationId();
+        }
+
+        return new NotificationCursorResult<>(
+                content,
+                hasNext,
+                nextCursorCreatedAt,
+                nextCursorId
+        );
     }
 }

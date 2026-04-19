@@ -14,4 +14,12 @@ public interface NotificationRepository {
     Page<Notification> findRecentByRequesterId(Long requesterId, LocalDateTime from, Pageable pageable);
 
     List<Notification> findByIds(List<Long> ids);
+
+    List<Notification> findRecentByRequesterIdWithCursor(
+            Long requesterId,
+            LocalDateTime from,
+            LocalDateTime cursorCreatedAt,
+            Long cursorId,
+            int size
+    );
 }
