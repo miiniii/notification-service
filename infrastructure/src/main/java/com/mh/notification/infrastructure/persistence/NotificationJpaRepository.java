@@ -40,4 +40,8 @@ public interface NotificationJpaRepository extends JpaRepository<Notification, L
             Pageable pageable
     );
 
+    List<Notification> findTop1000ByCreatedAtBeforeOrderByCreatedAtAsc(LocalDateTime cutoff);
+
+    void deleteAllByIdIn(List<Long> ids);
+
 }

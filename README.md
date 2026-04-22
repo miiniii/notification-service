@@ -12,6 +12,7 @@
 | 기능 | Method | URL |
 |------|--------|-----|
 | 알림 등록 | POST | `/api/notifications` |
+| 요청자별 최근 7일 알림 내역 조회| GET | `/api/notifications/history?requesterId=1&size=20` |
 
 ### 실행방법
 ```bash
@@ -24,17 +25,19 @@ redis-server
 # Mock API 실행
 ./gradlew :mock:bootRun
 
-# 알림 생성 API 호출
+# 알림 등록 API 호출
 curl -X POST http://localhost:8080/api/notifications \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": 999,
+    "requesterId": 1001,
+    "userId": 2001,
     "service": "PAYMENT",
-    "channel": "EMAIL",
-    "title": "정상 발송 테스트",
-    "body": "이메일 알림 테스트입니다.",
-    "targetUrl": "/payments/concurrency-test"
-  }'
+    "channel": "SMS",
+    "title": "결제 완료",
+    "body": "결제가 정상적으로 완료되었습니다.",
+    "targetUrl": "/payments/123",
+    "receiver": "01012345678"
+}'
 ```
 
 ### 디렉토리 구조
@@ -288,3 +291,18 @@ Circuit Breaker 설정
 ![img_5.png](img_5.png)
 - 알림 데이터가 계속 누적되어 최근 7일 조회와 오래된 데이터 관리 필요
 - `created_at` 기준으로 일 단위 RANGE 파티셔닝 적용
+
+### 2-4. 최근 7일 데이터와 과거 데이터 분리
+
+#### 배경
+알림 데이터는 시간이 지날수록 계속 누적되기 때문에, 조회가 많은 최근 7일 데이터와 그 이전 데이터를 분리해 관리 필요
+
+#### 구현
+- `notifications` 테이블에 일단위 RANGE 파티셔닝을 적용하고, 미래 날짜 파티션은 Scheduler(매일 새벽 1시)를 통해 자동 추가하도록 구성
+- 최근 7일 이전 데이터는 Archive DB로 이관하고, 저장이 완료된 데이터는 Main DB에서 삭제하는 방식으로 최근 데이터와 과거 데이터를 분리 관리(매일 새벽 2시)
+
+#### 이슈와 해결
+- 구현 과정에서 Main DB와 Archive DB 역할이 섞이며 JPA 초기화와 파티션 생성 대상 DB가 꼬이는 문제 발생
+- Main DB는 JPA 전용 datasource, Archive DB는 `JdbcTemplate` 전용 datasource로 분리하고, 스케줄러에는 `mainJdbcTemplate`를 명시 주입
+
+

@@ -3,9 +3,7 @@ package com.mh.notification.infrastructure.persistence;
 import com.mh.notification.application.port.NotificationRepository;
 import com.mh.notification.domain.Notification;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -23,20 +21,6 @@ public class NotificationRepositoryImpl implements NotificationRepository {
     }
 
     @Override
-    public Page<Notification> findRecentByRequesterId(Long requesterId, LocalDateTime from, Pageable pageable) {
-        return notificationJpaRepository.findByRequesterIdAndCreatedAtGreaterThanEqual(
-                requesterId,
-                from,
-                pageable
-        );
-    }
-
-    @Override
-    public List<Notification> findByIds(List<Long> ids) {
-        return notificationJpaRepository.findByIdIn(ids);
-    }
-
-    @Override
     public List<Notification> findRecentByRequesterIdWithCursor(Long requesterId, LocalDateTime from, LocalDateTime cursorCreatedAt, Long cursorId, int size) {
         return notificationJpaRepository.findRecentByRequesterIdWithCursor(
                 requesterId,
@@ -45,5 +29,15 @@ public class NotificationRepositoryImpl implements NotificationRepository {
                 cursorId,
                 PageRequest.of(0, size)
         );
+    }
+
+    @Override
+    public List<Notification> findOldNotifications(LocalDateTime cutoff, int limit) {
+        return notificationJpaRepository.findTop1000ByCreatedAtBeforeOrderByCreatedAtAsc(cutoff);
+    }
+
+    @Override
+    public void deleteAllByIds(List<Long> ids) {
+        notificationJpaRepository.deleteAllByIdIn(ids);
     }
 }
