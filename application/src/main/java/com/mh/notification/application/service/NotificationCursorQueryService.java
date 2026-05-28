@@ -3,6 +3,7 @@ package com.mh.notification.application.service;
 import com.mh.notification.application.dto.NotificationCursorResult;
 import com.mh.notification.application.dto.NotificationHistoryQueryResult;
 import com.mh.notification.application.dto.NotificationSendResultQueryResult;
+import com.mh.notification.application.exception.InvalidCursorException;
 import com.mh.notification.application.port.NotificationRepository;
 import com.mh.notification.application.port.NotificationSendResultRepository;
 import com.mh.notification.domain.Notification;
@@ -30,6 +31,8 @@ public class NotificationCursorQueryService {
             Long cursorId,
             int size
     ) {
+        validateCursorPair(cursorCreatedAt, cursorId);
+
         LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
 
         List<Notification> notifications = notificationRepository.findRecentByRequesterIdWithCursor(
@@ -83,5 +86,11 @@ public class NotificationCursorQueryService {
                 nextCursorCreatedAt,
                 nextCursorId
         );
+    }
+
+    private void validateCursorPair(LocalDateTime cursorCreatedAt, Long cursorId) {
+        if ((cursorCreatedAt == null) != (cursorId == null)) {
+            throw new InvalidCursorException();
+        }
     }
 }
