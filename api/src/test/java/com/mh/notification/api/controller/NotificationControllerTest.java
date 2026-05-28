@@ -1,8 +1,8 @@
 package com.mh.notification.api.controller;
 
 import com.mh.notification.application.exception.InvalidCursorException;
-import com.mh.notification.application.service.NotificationCursorQueryService;
 import com.mh.notification.application.service.NotificationService;
+import com.mh.notification.application.usecase.NotificationCursorQueryUseCase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,12 +27,12 @@ class NotificationControllerTest {
     private NotificationService notificationService;
 
     @Mock
-    private NotificationCursorQueryService notificationCursorQueryService;
+    private NotificationCursorQueryUseCase notificationCursorQueryUseCase;
 
     @BeforeEach
     void setUp() {
         NotificationController notificationController =
-                new NotificationController(notificationService, notificationCursorQueryService);
+                new NotificationController(notificationService, notificationCursorQueryUseCase);
 
         mockMvc = MockMvcBuilders.standaloneSetup(notificationController)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -41,7 +41,7 @@ class NotificationControllerTest {
 
     @Test
     void getNotificationHistory_whenOnlyCursorCreatedAtExists_thenReturnBadRequest() throws Exception {
-        given(notificationCursorQueryService.getRecentNotifications(
+        given(notificationCursorQueryUseCase.getRecentNotifications(
                 eq(1L),
                 any(),
                 isNull(),
@@ -57,7 +57,7 @@ class NotificationControllerTest {
 
     @Test
     void getNotificationHistory_whenOnlyCursorIdExists_thenReturnBadRequest() throws Exception {
-        given(notificationCursorQueryService.getRecentNotifications(
+        given(notificationCursorQueryUseCase.getRecentNotifications(
                 eq(1L),
                 isNull(),
                 eq(10L),
