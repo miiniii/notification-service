@@ -39,6 +39,8 @@ app:
   cache:
     notification-history:
       ttl-seconds: 60
+  outbox:
+    republish-grace-period-seconds: 60
 
 management:
   endpoints:

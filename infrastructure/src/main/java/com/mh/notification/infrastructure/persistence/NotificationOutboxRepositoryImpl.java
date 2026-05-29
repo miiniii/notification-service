@@ -6,6 +6,7 @@ import com.mh.notification.domain.OutboxStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,11 @@ public class NotificationOutboxRepositoryImpl implements NotificationOutboxRepos
     @Override
     public List<NotificationOutbox> findAllByStatus(OutboxStatus status) {
         return notificationOutboxJpaRepository.findAllByStatus(status);
+    }
+
+    @Override
+    public List<NotificationOutbox> findPublishedWithoutSendResultCreatedBefore(LocalDateTime cutoff) {
+        return notificationOutboxJpaRepository.findPublishedWithoutSendResultCreatedBefore(cutoff);
     }
 
     @Override
