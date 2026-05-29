@@ -8,5 +8,11 @@ public interface NotificationHistoryCacheMetrics {
 
     void incrementRedisError();
 
+    void incrementLocalHit();
+
+    void incrementLocalMiss();
+
+    void incrementLocalError();
+
     void incrementDbFallback();
 }

@@ -16,11 +16,17 @@ class MicrometerNotificationHistoryCacheMetricsTest {
         metrics.incrementRedisHit();
         metrics.incrementRedisMiss();
         metrics.incrementRedisError();
+        metrics.incrementLocalHit();
+        metrics.incrementLocalMiss();
+        metrics.incrementLocalError();
         metrics.incrementDbFallback();
 
         assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.REDIS_HIT).count()).isEqualTo(1);
         assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.REDIS_MISS).count()).isEqualTo(1);
         assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.REDIS_ERROR).count()).isEqualTo(1);
+        assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.LOCAL_HIT).count()).isEqualTo(1);
+        assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.LOCAL_MISS).count()).isEqualTo(1);
+        assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.LOCAL_ERROR).count()).isEqualTo(1);
         assertThat(meterRegistry.counter(MicrometerNotificationHistoryCacheMetrics.DB_FALLBACK).count()).isEqualTo(1);
     }
 }

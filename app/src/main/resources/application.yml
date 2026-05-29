@@ -43,6 +43,9 @@ app:
   cache:
     notification-history:
       ttl-seconds: 60
+      local:
+        ttl-seconds: 10
+        maximum-size: 10000
   outbox:
     republish-grace-period-seconds: 60
 
