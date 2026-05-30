@@ -9,6 +9,7 @@ import com.mh.notification.application.dto.NotificationHistoryCacheLookup;
 import com.mh.notification.application.dto.NotificationHistoryQueryResult;
 import com.mh.notification.application.port.NotificationHistoryLocalCacheRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
@@ -19,6 +20,7 @@ public class CaffeineNotificationHistoryLocalCacheRepository implements Notifica
 
     private final Cache<NotificationHistoryCacheKey, NotificationCursorResult<NotificationHistoryQueryResult>> cache;
 
+    @Autowired
     public CaffeineNotificationHistoryLocalCacheRepository(NotificationHistoryLocalCacheProperties properties) {
         this(properties, Ticker.systemTicker());
     }
