@@ -342,6 +342,7 @@ _cursorId만 있음_
 | 다음 페이지 조회 | cursor 조합 검증이 명확하지 않음        | cursorCreatedAt + cursorId 함께 필요 |
 | 예외 처리        | 잘못된 값이 조회 로직까지 전파 가능     | InvalidCursorException 발생 후 400 응답|
 | 캐시 키 안정성   | 잘못된 cursor 값이 key에 반영될 수 있음 | 검증된 요청만 Cache Key 생성            |
+
 _Redis Global Cache를 적용하기 전에 조회 API의 입력 경계를 먼저 정리하면서, 캐시 키 설계를 더 안정적으로 가져갈 수 있음_
 
 ### 3-2. Redis Stream Consumer Group 초기화 보완
@@ -353,8 +354,6 @@ _Redis Global Cache를 적용하기 전에 조회 API의 입력 경계를 먼저
 Consumer Group 기반 XREADGROUP 수행
 -> Stream 또는 Group이 없으면 NOGROUP 예외 발생 가능
 - 기존 구조에서는 Stream/Group 초기화 상태에 따라 메시지 소비 스케줄러가 예외를 만날 수 있음
-
-<br>
 
 #### 해결 방안
 | 항목           | 변경 전     |변경 후    |
