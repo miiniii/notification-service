@@ -1,0 +1,28 @@
+@startuml
+title Redis Global Cache 조회 흐름
+
+actor Admin as "관리자 페이지"
+participant API as "알림 내역 조회 API"
+database Redis as "Redis Cache"
+database DB as "DB"
+
+Admin -> API: 알림 내역 조회 요청
+API -> Redis: 캐시 조회
+
+alt Cache Hit
+    Redis --> API: 캐시 데이터 반환
+    API --> Admin: 응답
+else Cache Miss
+    Redis --> API: 캐시 없음
+    API -> DB: 알림 내역 조회
+    DB --> API: 조회 결과
+    API -> Redis: 조회 결과 캐싱
+    API --> Admin: 응답
+else Redis Error
+    Redis --> API: Redis 예외
+    API -> DB: DB fallback 조회
+    DB --> API: 조회 결과
+    API --> Admin: 응답
+end
+
+@enduml

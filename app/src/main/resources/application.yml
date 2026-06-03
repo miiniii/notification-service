@@ -27,6 +27,10 @@ spring:
     redis:
       host: localhost
       port: 6379
+      connect-timeout: 500ms
+      timeout: 3s
+      lettuce:
+        shutdown-timeout: 100ms
 
 app:
   datasource:
@@ -35,6 +39,30 @@ app:
       username: root
       password: 12341234
       driver-class-name: com.mysql.cj.jdbc.Driver
+
+  cache:
+    notification-history:
+      ttl-seconds: 60
+      local:
+        ttl-seconds: 10
+        maximum-size: 10000
+  outbox:
+    republish-grace-period-seconds: 60
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.95, 0.99
 
 resilience4j:
   circuitbreaker:

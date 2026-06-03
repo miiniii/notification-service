@@ -1,0 +1,34 @@
+@startuml
+title Local Cache + Redis Global Cache 조회 흐름
+
+actor Admin as "관리자 페이지"
+participant API as "알림 내역 조회 API"
+database Local as "Local Cache\n(Caffeine)"
+database Redis as "Redis Global Cache"
+database DB as "DB"
+
+Admin -> API: 알림 내역 조회 요청
+API -> Local: Local Cache 조회
+
+alt Local Cache Hit
+    Local --> API: 캐시 데이터 반환
+    API --> Admin: 응답
+
+else Local Cache Miss
+    API -> Redis: Redis Cache 조회
+
+    alt Redis Cache Hit
+        Redis --> API: 캐시 데이터 반환
+        API -> Local: Local Cache 저장
+        API --> Admin: 응답
+
+    else Redis Cache Miss
+        API -> DB: 알림 내역 조회
+        DB --> API: 조회 결과
+        API -> Redis: 조회 결과 캐싱
+        API -> Local: 조회 결과 캐싱
+        API --> Admin: 응답
+    end
+end
+
+@enduml

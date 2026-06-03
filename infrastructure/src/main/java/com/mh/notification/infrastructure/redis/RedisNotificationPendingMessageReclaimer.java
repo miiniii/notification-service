@@ -30,43 +30,59 @@ public class RedisNotificationPendingMessageReclaimer implements NotificationPen
 
     private final StringRedisTemplate stringRedisTemplate;
     private final NotificationConsumerIdentityProvider consumerIdentityProvider;
+    private final NotificationStreamGroupInitializer notificationStreamGroupInitializer;
 
 
     @Override
     public List<StreamMessage> reclaimPendingMessages() {
-        // 1) idle time이 일정 이상 지난 pending 메시지 조회
-        PendingMessages pendingMessages = stringRedisTemplate.opsForStream()
-                                .pending(STREAM_KEY, GROUP_NAME, Range.unbounded(), FETCH_COUNT, MIN_IDLE_TIME);
+        try {
+            // 1) idle time이 일정 이상 지난 pending 메시지 조회
+            PendingMessages pendingMessages = stringRedisTemplate.opsForStream()
+                                    .pending(STREAM_KEY, GROUP_NAME, Range.unbounded(), FETCH_COUNT, MIN_IDLE_TIME);
 
-        if (pendingMessages == null || pendingMessages.isEmpty()) {
-            return List.of();
+            if (pendingMessages == null || pendingMessages.isEmpty()) {
+                return List.of();
+            }
+
+            // 2) reclaim 대상 recordId 수집
+            List<RecordId> recordIds = new ArrayList<>();
+            for (PendingMessage pendingMessage : pendingMessages) {
+                recordIds.add(pendingMessage.getId());
+            }
+
+            // 3) 현재 consumer가 XCLAIM
+            List<MapRecord<String, Object, Object>> claimedRecords = stringRedisTemplate.opsForStream()
+                    .claim(
+                            STREAM_KEY, GROUP_NAME, consumerIdentityProvider.getConsumerName(), MIN_IDLE_TIME, recordIds.toArray(new RecordId[0])
+                    );
+
+            if (claimedRecords == null || claimedRecords.isEmpty()) {
+                return List.of();
+            }
+
+            // 4) StreamMessage로 변환
+            List<StreamMessage> result = new ArrayList<>();
+            for (MapRecord<String, Object, Object> record : claimedRecords) {
+                if (isBootstrapRecord(record)) {
+                    continue;
+                }
+
+                Map<Object, Object> value = record.getValue();
+                String payload = String.valueOf(value.get("payload"));
+                result.add(StreamMessage.of(record.getId().getValue(),payload));
+            }
+
+            return result;
+        } catch (Exception e) {
+            if (RedisStreamExceptionUtils.isNoGroup(e)) {
+                notificationStreamGroupInitializer.initialize();
+                return List.of();
+            }
+            throw e;
         }
-
-        // 2) reclaim 대상 recordId 수집
-        List<RecordId> recordIds = new ArrayList<>();
-        for (PendingMessage pendingMessage : pendingMessages) {
-            recordIds.add(pendingMessage.getId());
-        }
-
-        // 3) 현재 consumer가 XCLAIM
-        List<MapRecord<String, Object, Object>> claimedRecords = stringRedisTemplate.opsForStream()
-                .claim(
-                        STREAM_KEY, GROUP_NAME, consumerIdentityProvider.getConsumerName(), MIN_IDLE_TIME, recordIds.toArray(new RecordId[0])
-                );
-
-        if (claimedRecords == null || claimedRecords.isEmpty()) {
-            return List.of();
-        }
-
-        // 4) StreamMessage로 변환
-        List<StreamMessage> result = new ArrayList<>();
-        for (MapRecord<String, Object, Object> record : claimedRecords) {
-            Map<Object, Object> value = record.getValue();
-            String payload = String.valueOf(value.get("payload"));
-            result.add(StreamMessage.of(record.getId().getValue(),payload));
-        }
-
-        return result;
     }
 
+    private boolean isBootstrapRecord(MapRecord<String, Object, Object> record) {
+        return "bootstrap".equals(String.valueOf(record.getValue().get("type")));
+    }
 }

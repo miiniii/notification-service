@@ -7,14 +7,10 @@ import com.mh.notification.api.dto.NotificationHistoryResponse;
 import com.mh.notification.application.dto.NotificationCreateResult;
 import com.mh.notification.application.dto.NotificationCursorResult;
 import com.mh.notification.application.dto.NotificationHistoryQueryResult;
-import com.mh.notification.application.service.NotificationCursorQueryService;
 import com.mh.notification.application.service.NotificationService;
+import com.mh.notification.application.usecase.NotificationCursorQueryUseCase;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -27,7 +23,7 @@ import java.util.List;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final NotificationCursorQueryService notificationCursorQueryService;
+    private final NotificationCursorQueryUseCase notificationCursorQueryUseCase;
 
     @PostMapping
     public NotificationCreateResponse createNotification(@Valid @RequestBody NotificationCreateRequest request) {
@@ -43,7 +39,7 @@ public class NotificationController {
             @RequestParam(name = "size", defaultValue = "20") int size
     ) {
         NotificationCursorResult<NotificationHistoryQueryResult> result =
-                notificationCursorQueryService.getRecentNotifications(
+                notificationCursorQueryUseCase.getRecentNotifications(
                         requesterId,
                         cursorCreatedAt,
                         cursorId,

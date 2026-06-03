@@ -305,4 +305,178 @@ Circuit Breaker 설정
 - 구현 과정에서 Main DB와 Archive DB 역할이 섞이며 JPA 초기화와 파티션 생성 대상 DB가 꼬이는 문제 발생
 - Main DB는 JPA 전용 datasource, Archive DB는 `JdbcTemplate` 전용 datasource로 분리하고, 스케줄러에는 `mainJdbcTemplate`를 명시 주입
 
+### 3. Codex CLI 코드 리뷰 중 발견한 안정성 이슈
+- Codex CLI Plan Mode로 기존 조회/발송 흐름 검토
+  - Cursor 입력 검증, Redis Stream Consumer Group 초기화, Outbox 재발행 복구 흐름에서 보완할 지점 확인
 
+|구분          |발견한 문제   |보완 방향 |
+|------|----------|--------------|
+|Cursor 파라미터       |cursorCreatedAt, cursorId 중 하나만 들어오는 요청 방어 부족 |잘못된 cursor 조합은 400 응답 |
+|Consumer Group 초기화 |Stream 또는 Group이 없는 상태에서 소비 시작 시 예외 가능   |Stream/Group 존재 여부 확인 후 초기화|
+|Outbox 재발행 복구    |PUBLISHED 상태지만 실제 발송 결과가 없는 메시지 복구 필요  | send_result 없는 outbox 재발행 |
+
+### 3-1. Cursor 파라미터 검증
+
+#### 문제
+- 정상 요청 <br>
+_cursorCreatedAt + cursorId_
+-> 특정 시점 + 특정 row 이후 데이터 조회
+
+- 잘못된 요청 <br>
+_cursorCreatedAt만 있음_
+-> 같은 시간대 데이터 중 어디서부터 조회할지 불명확 <br>
+_cursorId만 있음_
+-> 생성 시각 기준 없이 ID만으로 커서 조회
+
+
+**Redis Global Cache 적용 시, 잘못된 cursor 값이 조회 조건뿐 아니라 Cache Key 생성에도 반영될 수 있음** 
+
+
+> 잘못된 Cursor 요청 -> 잘못된 DB 조회 조건 생성 -> 잘못된 Cache Key 생성 가능 -> 캐시 기준이 불명확해질 위험
+
+#### 해결 방안
+|항목             | 변경 전        |변경 후  |
+|------|----------|--------------|
+| Cursor 검증     | 일부 누락된 cursor 조합 방어 부족     | 둘 중 하나만 전달되면 예외 처리       |
+| 첫 페이지 조회   | cursor 없이 조회                    | 기존처럼 허용                     |
+| 다음 페이지 조회 | cursor 조합 검증이 명확하지 않음        | cursorCreatedAt + cursorId 함께 필요 |
+| 예외 처리        | 잘못된 값이 조회 로직까지 전파 가능     | InvalidCursorException 발생 후 400 응답|
+| 캐시 키 안정성   | 잘못된 cursor 값이 key에 반영될 수 있음 | 검증된 요청만 Cache Key 생성            |
+
+_Redis Global Cache를 적용하기 전에 조회 API의 입력 경계를 먼저 정리하면서, 캐시 키 설계를 더 안정적으로 가져갈 수 있음_
+
+### 3-2. Redis Stream Consumer Group 초기화 보완
+
+#### 문제
+- Redis Stream 소비 구조는 Consumer Group을 전제로 동작
+- 앱 시작 시점에 Stream 또는 Consumer Group이 항상 존재한다고 보장할 수 없음
+- 앱 실행 <br>
+Consumer Group 기반 XREADGROUP 수행
+-> Stream 또는 Group이 없으면 NOGROUP 예외 발생 가능
+- 기존 구조에서는 Stream/Group 초기화 상태에 따라 메시지 소비 스케줄러가 예외를 만날 수 있음
+
+#### 해결 방안
+| 항목           | 변경 전     |변경 후    |
+|------|----------|--------------|
+| Stream 존재 여부 | 소비 시점에 존재한다고 가정    | 없으면 bootstrap record로 Stream 생성 |
+| Consumer Group | 이미 생성되어 있다고 가정      | 없으면 Group 생성                 |
+| 중복 초기화      | BUSYGROUP 예외 가능         | 이미 있으면 정상 상태로 간주    |
+| 소비 안정성      | 초기화 상태에 따라 NOGROUP 가능 | 초기화 후 소비 가능          |
+
+- Stream/Group 확인 <br>
+  - Stream 없음: bootstrap record 추가
+  - Group 없음: Consumer Group 생성
+  - 이미 존재: 그대로 진행
+
+#### 결과
+
+- 앱 실행 시 Redis Stream 상태가 비어 있어도 Consumer Group 기반 소비가 시작될 수 있도록 초기화 흐름을 보완
+- 운영 환경에서 Redis 데이터가 초기화되거나 새 환경에 배포되는 경우에도 메시지 소비 시작 조건을 더 명확하게 만듦
+
+### 3-3. Outbox 기반 유실 메시지 재발행 복구
+
+#### 문제
+- 중간 실패 케이스 발견
+  - Outbox 상태 PUBLISHED -> Redis Stream 발행 성공으로 간주 -> 하지만 send_result 없음 -> 실제 발송 처리 여부 확인 불가
+- 이 상태가 지속되면, outbox는 이미 발행된 것으로 표시되어 다시 처리되지 않고 메시지가 유실된 것처럼 남을 수 있음
+
+#### 해결 방안
+- PUBLISHED 상태지만, 발송 결과가 없는 outbox를 복구 대상으로 판단
+
+|조건             | 의미                       |
+|------|----------|
+| Outbox status = PUBLISHED |발행 완료로 표시된 outbox  |
+|send_result 없음         | 실제 발송 처리 결과가 없음    |
+|grace period 초과         |아직 처리 중일 가능성을 기다린 뒤 복구 |
+
+- PUBLISHED outbox 조회
+  + send_result 없음
+  + grace period 초과
+    -> Redis Stream 재발행
+- 재발행 성공 -> outbox 상태는 PUBLISHED 유지
+- 재발행 실패 -> 로그 기록 -> 다음 outbox 계속 처리
+
+#### 결과
+- 이 방식은 기존 구조를 크게 변경하지 않고(유실 방지를 우선으로 생각) 적용할 수 있는 최소 복구 방안
+- 현재 방식은 Outbox 자체에서 **재발행 횟수, 마지막 재발행 시각**을 명확히 추적하지는 않음
+- 장기적으로는 Outbox를 단순 발행 기록이 아니라, **처리 상태를 추적하는 형태**로 확장하는 방향 고려
+  - PUBLISHED, COMPLETED, DEAD 등 상태 세분화
+  - 재발행 판단(createdAt + grace period -> publishedAt, lastPublishedAt 기준)
+  - 처리 완료 추적(send_result 존재 여부로 판단 ->Consumer 처리 후 Outbox를 COMPLETED로 변경)
+
+
+
+## 4. 요청자별 알림 내역 조회 캐시 레이어 이중화
+#### 가정
+- 관리자 페이지에서는 특정 요청자의 알림 발송 이력을 반복적으로 확인할 가능성이 높음
+- 운영자가 장애 문의나 발송 이슈를 확인할 때, 동일 요청자에 대한 최근 알림 내역을 짧은 시간 안에 여러 번 조회할 수 있음
+### 4-1. Redis Global Cache 적용
+
+#### 조회 흐름
+- ![img_6.png](img_6.png)
+
+### 4-2. Redis timeout 설정
+- Redis 장애가 기능 실패로 전파되지는 않더라도 API 응답 지연으로 전파될 수 있음
+
+| 설정                         | 의미 | 설정 이유|
+|----------------------------|----------|---------|
+| connect-timeout: 500ms	    |Redis 연결 대기 시간|연결 자체가 오래 걸리면 빠르게 실패 처리|
+| timeout: 3s                | Redis command 대기 시간|Redis Stream blocking read와 충돌하지 않도록 조정|
+| shutdown-timeout: 100ms    |애플리케이션 종료 시 Lettuce 종료 대기 시간|종료 시 불필요한 장시간 대기 방지|
+
+- Redis Cache는 fail-open 구조를 유지하면서, Redis 지연이 API 전체 응답 지연으로 길게 전파되는 것을 제한
+### 4-3. Local Cache 적용
+
+#### 조회 흐름
+![img_7.png](img_7.png)
+- Redis 앞단에 Caffeine 기반 Local Cache를 추가
+
+| 설정                         | 값     | 
+|----------------------------|-------|
+|Redis TTL| 60s   |
+|Local TTL| 10s   |
+|maximum-size| 10000 |
+
+### 4-4. Redis command timeout 조정
+
+#### 문제
+- 초기 : Redis command timeout을 1s로 설정
+  - 앱 실행 중 Redis Stream XREADGROUP에서 timeout이 발생
+- 원인 : Redis Cache와 Redis Stream이 같은 RedisConnectionFactory를 공유
+
+> spring.data.redis.timeout = 1s <br>
+> Redis Stream XREADGROUP block timeout = 2s  <br>
+> 정상적으로 2초 대기해야 하는 Stream read가 1초 후 command timeout으로 실패
+
+#### 개선
+- Redis command timeout을 Stream blocking read 시간보다 길게 조정
+
+  |항목	|변경 전	|변경 후|
+  |------------|----------------------|-------|
+  |Redis command timeout	|1초	|3초|
+  |XREADGROUP block timeout|	2초|	2초|
+  |결과|	정상 대기 중 timeout 발생 가능|	Stream read 대기 가능|
+
+#### 결과
+- 현재 구조에서는 Cache와 Stream이 같은 Redis 설정을 공유하기 때문에, command timeout을 Stream block timeout보다 길게 설정
+- 장기적으로는 Cache와 Stream의 timeout 요구사항이 다르기 때문에 RedisConnectionFactory를 용도별로 분리하는 방향이 더 적절하다고 판단
+
+
+### 4-5. 부하 테스트 결과 비교
+- Local 환경에서는 애플리케이션 서버와 Redis를 분리된 서버 환경으로 구성하지 않았기 때문에, Redis network in/out 지표를 통해 서버 간 네트워크 비용 감소를 직접 비교하기는 어려움
+- 따라서 Redis 접근량 자체를 확인하기 위해 `Redis GET command 수`를 핵심 지표로 사용
+- 테스트 조건
+  - VUser : 100
+  - 테스트 시간 : 60s
+  - 요청 URL : /api/notifications/history?requesterId=1&size=20
+
+#### 결과
+|확인 지표|Redis Global Cache only|Local Cache + Redis Global Cache|
+|------------|----------------------|-------|
+|Redis GET command 수 |![img_11.png](img_11.png)|![img_8.png](img_8.png)|
+|Local Cache Hit / Miss	| - |![img_12.png](img_12.png)|
+|DB 조회 수 |![img_10.png](img_10.png)|![img_9.png](img_9.png)|
+
+- Redis GET command 수는 약 120~150건 수준으로 감소
+  - Redis Global Cache only 대비 Redis GET 요청이 약 99.9% 이상 감소
+- Redis Global Cache는 DB 조회 부하를 줄이는 역할을 하고, Local Cache는 Redis 접근량을 줄이는 역할을 함
